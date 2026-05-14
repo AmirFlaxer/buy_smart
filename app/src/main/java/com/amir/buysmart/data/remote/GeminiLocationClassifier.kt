@@ -13,11 +13,11 @@ class GeminiLocationClassifier @Inject constructor() {
 
     private val model by lazy {
         GenerativeModel(
-            modelName = "gemini-2.0-flash",
+            modelName = "gemini-2.5-flash",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig {
                 temperature = 0f
-                maxOutputTokens = 10
+                maxOutputTokens = 20
             },
             systemInstruction = content {
                 text("ענה במילה אחת בלבד מהרשימה: סופר/ירקניה/מעדניה/מאפייה/בית_מרקחת/אחר")
