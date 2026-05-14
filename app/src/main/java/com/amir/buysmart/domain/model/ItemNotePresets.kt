@@ -68,15 +68,13 @@ object ItemNotePresets {
         "חציל" to ShoppingLocation.GREENGROCER,
         "כרובית" to ShoppingLocation.GREENGROCER,
         "ברוקולי" to ShoppingLocation.GREENGROCER,
-        "בשר" to ShoppingLocation.DELI,
-        "עוף" to ShoppingLocation.DELI,
-        "דג" to ShoppingLocation.DELI,
-        "קציצה" to ShoppingLocation.DELI,
-        "שניצל" to ShoppingLocation.DELI,
-        "נקניק" to ShoppingLocation.DELI,
-        "סלמי" to ShoppingLocation.DELI,
-        "פסטרמה" to ShoppingLocation.DELI,
-        "נקניקייה" to ShoppingLocation.DELI,
+        "ג'חנון" to ShoppingLocation.DELI,
+        "ג׳חנון" to ShoppingLocation.DELI,
+        "מלאווח" to ShoppingLocation.DELI,
+        "חומוס" to ShoppingLocation.DELI,
+        "פלאפל" to ShoppingLocation.DELI,
+        "שווארמה" to ShoppingLocation.DELI,
+        "אוכל מוכן" to ShoppingLocation.DELI,
     )
 
     fun getPresetNotes(name: String): List<String> {

@@ -20,7 +20,7 @@ class GeminiLocationClassifier @Inject constructor() {
                 maxOutputTokens = 20
             },
             systemInstruction = content {
-                text("ענה במילה אחת בלבד מהרשימה: סופר/ירקניה/מעדניה/מאפייה/בית_מרקחת/אחר")
+                text("ענה במילה אחת בלבד מהרשימה: סופר/ירקניה/מזון_מוכן/מאפייה/בית_מרקחת/אחר")
             }
         )
     }
@@ -32,7 +32,7 @@ class GeminiLocationClassifier @Inject constructor() {
             val text = response.text?.trim()?.lowercase() ?: return null
             when {
                 "ירקניה" in text || "ירקן" in text -> ShoppingLocation.GREENGROCER
-                "מעדניה" in text || "קצב" in text -> ShoppingLocation.DELI
+                "מזון_מוכן" in text || "מזון מוכן" in text -> ShoppingLocation.DELI
                 "מאפייה" in text                   -> ShoppingLocation.BAKERY
                 "בית_מרקחת" in text || "בית מרקחת" in text -> ShoppingLocation.PHARMACY
                 "אחר" in text                      -> null
