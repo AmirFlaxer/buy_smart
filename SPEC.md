@@ -20,37 +20,27 @@
 - Bug fix: רשימה נשמרת אחרי כניסה מחדש לאפליקציה
 - Bug fix: מסך לא קפוא בזמן יצירת רשימה
 
-### ⏳ נשאר לסיום Firebase setup
+### ⏳ נשאר לסיום Firebase + Gemini setup
 1. צור פרויקט Firebase ב-console.firebase.google.com
 2. הפעל Authentication (Google Sign-In) + Firestore + Cloud Messaging
 3. הורד `google-services.json` → `app/` (לא ב-git)
-4. Android Studio → Gradle sync → Run
+4. קבל Gemini API key מ-aistudio.google.com/apikey
+5. הוסף ל-`local.properties`: `GEMINI_API_KEY=your_key`
+6. Android Studio → Gradle sync → Run
 
 ---
 
-## TODO — פיצ'רים הבאים
+## ✅ מה נוסף (2026-05-14)
 
-### 🔴 HIGH — למידת היסטוריה לפי פריט
-**תיאור**: כשמוסיפים פריט "חלב עם קטגוריה סופר והערה קרטון", בפעם הבאה שמקלידים "חלב" —
-הקטגוריה והערה מתמלאות אוטומטית כמו שהיו בפעם האחרונה.
+### Single-list UX
+- רשימה נוצרת אוטומטית בכניסה ראשונה ("הרשימה שלנו") — ללא דיאלוג
+- הצטרפות דרך לינק בלבד (auto-join, ללא קוד הקלדה)
 
-**מה צריך לבנות:**
-- `ItemHistory` entity ב-Room: `(name, location, note, quantity)` — PrimaryKey = name (lowercase)
-- `ItemHistoryDao`: `upsert(history)` + `getByName(name): ItemHistoryEntity?`
-- Migration Room version 2→3 (טבלה חדשה)
-- אחרי כל הוספה מוצלחת (QuickAdd + AddItemScreen): שמור ב-ItemHistory
-- כשמקלידים שם ≥2 תווים: חפש ב-ItemHistory → אם נמצא, מלא אוטומטית קטגוריה + הערה
-- עדיפות: History > ItemNotePresets (history מנצח presets אם קיים)
-- ItemNotePresets ממשיך לספק חלופות כ-chips (לא כ-default)
-
-**קבצים לשנות:**
-- `ItemHistoryEntity.kt` (חדש)
-- `ItemHistoryDao.kt` (חדש)
-- `AppDatabase.kt` — version 3 + migration + DAO
-- `ItemRepository.kt` + `ItemRepositoryImpl.kt` — `saveHistory` + `getHistory`
-- `HomeViewModel.kt` — save history אחרי `quickAdd()`
-- `AddItemViewModel.kt` — save history אחרי `doSave()`
-- `AddItemViewModel.onNameChange` + `HomeViewModel.onQuickAddNameChange` — pre-fill from history
+### ItemHistory + Gemini Categorization
+- `ItemHistory` entity ב-Room v3: `(name PK, location, note, quantity)`
+- `GeminiLocationClassifier`: Gemini 2.0 Flash, ~20 טוקן לפריט, cached לתמיד
+- Priority: History > locationHints > Gemini (debounce 600ms)
+- שמירה אחרי כל add ב-HomeViewModel + AddItemViewModel
 
 ### 🟡 MEDIUM — שיפורים UX
 - [ ] Widget לאפליקציה — הוספה מהירה ממסך הבית
@@ -59,4 +49,4 @@
 
 ### 🟢 LOW — תשתית
 - [ ] Firebase Cloud Functions לשליחת Push Notifications
-- [ ] Multiple lists — מעבר בין רשימות פעילות
+- [ ] Multiple lists — ארכיטקטורה מוכנה (listId קיים), ממתין ל-UX
