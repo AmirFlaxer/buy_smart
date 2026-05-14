@@ -29,7 +29,7 @@ class ItemRepositoryImpl @Inject constructor(
 
     override fun getItemsByLocation(listId: String, location: ShoppingLocation): Flow<List<ShoppingItem>> {
         return firestoreService.getItemsForList(listId).map { items ->
-            items.filter { it.location == location }
+            items.filter { it.location == location && !it.pendingRefill }
         }
     }
 
@@ -76,9 +76,15 @@ class ItemRepositoryImpl @Inject constructor(
                 firestoreService.deleteItem(item.id, listId)
                 itemDao.deleteItem(item.id)
             } else {
-                firestoreService.toggleBought(item.id, listId, false)
-                itemDao.updateBought(item.id, false)
+                // RECURRING: עובר לאזור "לחידוש" — מחכה לאישור לפני שחוזר לרשימה
+                firestoreService.setPendingRefill(item.id, listId, true)
+                itemDao.setPendingRefillAndResetBought(item.id, true)
             }
         }
+    }
+
+    override suspend fun approvePendingRefill(item: ShoppingItem) {
+        firestoreService.setPendingRefill(item.id, item.listId, false)
+        itemDao.setPendingRefillAndResetBought(item.id, false)
     }
 }

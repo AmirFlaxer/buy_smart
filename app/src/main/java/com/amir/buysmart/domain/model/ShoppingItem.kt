@@ -10,5 +10,7 @@ data class ShoppingItem(
     val isBought: Boolean = false,
     val addedBy: String = "",
     val addedByName: String = "",
-    val listId: String = ""
+    val listId: String = "",
+    val priority: ItemPriority = ItemPriority.NORMAL,
+    val pendingRefill: Boolean = false
 )

@@ -3,27 +3,37 @@ package com.amir.buysmart.presentation.screens.home
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.presentation.components.LocationSection
+import com.amir.buysmart.presentation.components.VoiceInputButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -58,7 +68,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.activeList?.name ?: "BuySmart") },
+                title = { AppBarTitle() },
                 actions = {
                     state.activeList?.let { list ->
                         BadgedBox(
@@ -101,7 +111,6 @@ fun HomeScreen(
             when {
                 state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
-                // אינדיקציה ליצירת רשימה
                 state.isCreatingList -> Column(
                     Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -118,38 +127,37 @@ fun HomeScreen(
                         name = state.quickAddName,
                         note = state.quickAddNote,
                         location = state.quickAddLocation,
+                        priority = state.quickAddPriority,
                         suggestions = state.quickAddSuggestions,
                         presetNotes = state.quickAddPresetNotes,
                         onNameChange = viewModel::onQuickAddNameChange,
                         onLocationChange = viewModel::onQuickAddLocationChange,
+                        onPriorityChange = viewModel::onQuickAddPriorityChange,
                         onSuggestionSelected = viewModel::onQuickAddSuggestionSelected,
                         onPresetNoteToggle = viewModel::onQuickAddPresetNoteToggle,
                         onAdd = viewModel::quickAdd
                     )
                     HorizontalDivider()
 
-                    if (state.itemsByLocation.isEmpty()) {
-                        EmptyItemsView(
-                            inviteCode = state.activeList?.inviteCode ?: "",
-                            onShare = { code ->
-                                val deepLink = "buysmart://join/$code"
-                                val shareText = "הצטרף לרשימת הקניות שלנו ב-BuySmart!\n" +
-                                    "פתח: $deepLink\n" +
-                                    "או: פתח BuySmart ← הצטרף לרשימה ← קוד: $code"
-                                context.startActivity(
-                                    Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, shareText)
-                                    }, "שתף רשימה")
-                                )
-                            }
-                        )
+                    if (state.pendingRefillItems.isEmpty() && state.itemsByLocation.isEmpty()) {
+                        EmptyItemsView()
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.weight(1f)
                         ) {
+                            // סקשן "לחידוש" — פריטים שנקנו ומחכים לאישור
+                            if (state.pendingRefillItems.isNotEmpty()) {
+                                item {
+                                    PendingRefillSection(
+                                        items = state.pendingRefillItems,
+                                        onApprove = viewModel::approvePendingRefill,
+                                        onDelete = viewModel::deleteItem
+                                    )
+                                }
+                            }
+
                             items(state.itemsByLocation.entries.toList()) { (location, items) ->
                                 LocationSection(
                                     location = location,
@@ -199,9 +207,77 @@ fun HomeScreen(
             onPresetToggle = viewModel::onEditNotePresetToggle,
             onLocationChange = viewModel::onEditLocationChange,
             onTypeChange = viewModel::onEditTypeChange,
+            onPriorityChange = viewModel::onEditPriorityChange,
             onSave = viewModel::saveEdit,
             onDismiss = viewModel::dismissEdit
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun PendingRefillSection(
+    items: List<ShoppingItem>,
+    onApprove: (ShoppingItem) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    "🔄 לחידוש — נקנו בקנייה הקודמת",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${items.size} פריטים",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                )
+            }
+            items.forEach { item ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        if (item.note.isNotBlank()) {
+                            Text(
+                                text = item.note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilledTonalButton(
+                            onClick = { onApprove(item) },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
+                        }
+                        IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "מחק",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -216,11 +292,11 @@ private fun EditItemBottomSheet(
     onPresetToggle: (String) -> Unit,
     onLocationChange: (ShoppingLocation) -> Unit,
     onTypeChange: (ItemType) -> Unit,
+    onPriorityChange: (ItemPriority) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val selectedNotes = item.note.split(", ").map { it.trim() }.filter { it.isNotBlank() }.toSet()
-    // הפרד בין הערות שהן presets לבין מלל חופשי
     val freeText = selectedNotes.filter { it !in presetNotes }.joinToString(", ")
     var freeNoteInput by remember(item.id) { mutableStateOf(freeText) }
 
@@ -235,13 +311,22 @@ private fun EditItemBottomSheet(
         ) {
             Text("עריכת פריט", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
-            OutlinedTextField(
-                value = item.name,
-                onValueChange = onNameChange,
-                label = { Text("שם המוצר") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                OutlinedTextField(
+                    value = item.name,
+                    onValueChange = onNameChange,
+                    label = { Text("שם המוצר") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+                VoiceInputButton(
+                    onResult = onNameChange,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             OutlinedTextField(
                 value = item.quantity,
@@ -260,9 +345,8 @@ private fun EditItemBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     presetNotes.forEach { preset ->
-                        val isSelected = preset in selectedNotes
                         FilterChip(
-                            selected = isSelected,
+                            selected = preset in selectedNotes,
                             onClick = { onPresetToggle(preset) },
                             label = { Text(preset) }
                         )
@@ -270,15 +354,12 @@ private fun EditItemBottomSheet(
                 }
             }
 
-            // מלל חופשי להערה
             OutlinedTextField(
                 value = freeNoteInput,
                 onValueChange = { input ->
                     freeNoteInput = input
-                    // שמור presets שנבחרו + מלל חופשי
                     val selectedPresets = selectedNotes.filter { it in presetNotes }
-                    val parts = (selectedPresets + listOf(input.trim()))
-                        .filter { it.isNotBlank() }
+                    val parts = (selectedPresets + listOf(input.trim())).filter { it.isNotBlank() }
                     onNoteChange(parts.joinToString(", "))
                 },
                 label = { Text("הערה חופשית") },
@@ -299,6 +380,18 @@ private fun EditItemBottomSheet(
                         onClick = { onLocationChange(loc) },
                         label = { Text("${loc.emoji} ${loc.displayName}") }
                     )
+                }
+            }
+
+            // דחיפות
+            Text("דחיפות", style = MaterialTheme.typography.titleSmall)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                ItemPriority.entries.forEachIndexed { index, priority ->
+                    SegmentedButton(
+                        selected = item.priority == priority,
+                        onClick = { onPriorityChange(priority) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ItemPriority.entries.size)
+                    ) { Text("${priority.emoji} ${priority.displayName}") }
                 }
             }
 
@@ -332,10 +425,12 @@ private fun QuickAddBar(
     name: String,
     note: String,
     location: ShoppingLocation,
+    priority: ItemPriority,
     suggestions: List<String>,
     presetNotes: List<String>,
     onNameChange: (String) -> Unit,
     onLocationChange: (ShoppingLocation) -> Unit,
+    onPriorityChange: (ItemPriority) -> Unit,
     onSuggestionSelected: (String) -> Unit,
     onPresetNoteToggle: (String) -> Unit,
     onAdd: () -> Unit
@@ -345,8 +440,8 @@ private fun QuickAddBar(
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             ExposedDropdownMenuBox(
                 expanded = dropdownExpanded && suggestions.isNotEmpty(),
@@ -373,11 +468,16 @@ private fun QuickAddBar(
                     }
                 }
             }
-            FilledIconButton(
+            VoiceInputButton(
+                onResult = { onNameChange(it) },
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Button(
                 onClick = { onAdd(); dropdownExpanded = false },
-                enabled = name.isNotBlank()
+                enabled = name.isNotBlank(),
+                modifier = Modifier.padding(top = 4.dp)
             ) {
-                Icon(Icons.Default.Add, "הוסף")
+                Text("הוסף")
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -394,7 +494,21 @@ private fun QuickAddBar(
                 )
             }
         }
-        // הערות מהירות (מופיע רק כשיש presets לפריט שהוקלד)
+        // דחיפות
+        Spacer(Modifier.height(4.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ItemPriority.entries.forEach { p ->
+                FilterChip(
+                    selected = priority == p,
+                    onClick = { onPriorityChange(p) },
+                    label = { Text("${p.emoji} ${p.displayName}", style = MaterialTheme.typography.labelSmall) }
+                )
+            }
+        }
+        // הערות מהירות
         if (presetNotes.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -419,7 +533,60 @@ private fun QuickAddBar(
 }
 
 @Composable
-private fun EmptyItemsView(inviteCode: String, onShare: (String) -> Unit) {
+private fun AppBarTitle() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // לוגו — ריבוע מעוגל עם gradient + עגלה + ניצוץ
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF26A69A), Color(0xFF004D40)),
+                        start = Offset(0f, 0f),
+                        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.ShoppingCart,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+            // ניצוץ זהב בפינה
+            Text(
+                text = "✦",
+                color = Color(0xFFFFD740),
+                fontSize = 9.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-1).dp)
+            )
+        }
+        Column(verticalArrangement = Arrangement.Center) {
+            Text(
+                text = "רשימת קניות",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 18.sp
+            )
+            Text(
+                text = "AF Apps",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                lineHeight = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyItemsView() {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -427,13 +594,5 @@ private fun EmptyItemsView(inviteCode: String, onShare: (String) -> Unit) {
     ) {
         Text("הרשימה ריקה", style = MaterialTheme.typography.headlineSmall)
         Text("הוסף פריט בשורה למעלה", style = MaterialTheme.typography.bodyMedium)
-        if (inviteCode.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            OutlinedButton(onClick = { onShare(inviteCode) }, Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Share, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("שתף רשימה עם בני הבית")
-            }
-        }
     }
 }

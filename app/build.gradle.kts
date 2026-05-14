@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.appdistribution)
 }
 
 val localProperties = Properties().also { props ->
@@ -28,6 +29,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            firebaseAppDistribution {
+                artifactType = "APK"
+                testers = localProperties.getProperty("FIREBASE_TESTERS", "")
+                releaseNotes = "גרסה חדשה של BuySmart"
+            }
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(

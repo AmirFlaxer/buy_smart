@@ -1,17 +1,19 @@
 package com.amir.buysmart.presentation.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 
@@ -61,8 +63,15 @@ fun ItemRow(
     onEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val bgColor = when (item.priority) {
+        ItemPriority.URGENT -> Color(0xFFFFCDD2)
+        ItemPriority.NOT_URGENT -> Color(0xFFFFF9C4)
+        else -> Color.Transparent
+    }
     Row(
-        modifier.fillMaxWidth(),
+        modifier
+            .fillMaxWidth()
+            .background(bgColor, RoundedCornerShape(6.dp)),
         verticalAlignment = Alignment.Top
     ) {
         Column(Modifier.weight(1f).padding(top = 4.dp)) {
@@ -96,13 +105,12 @@ fun ItemRow(
                 )
             }
         }
-        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-            Icon(
-                Icons.Default.Edit,
-                contentDescription = "ערוך",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
-            )
+        TextButton(
+            onClick = onEdit,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp)
+        ) {
+            Text("שינוי", style = MaterialTheme.typography.labelSmall)
         }
         IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
             Icon(

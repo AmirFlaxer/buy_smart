@@ -9,10 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 
@@ -155,14 +157,16 @@ fun ShoppingScreen(
 
 @Composable
 private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
+    val containerColor = when {
+        item.isBought -> MaterialTheme.colorScheme.surfaceVariant
+        item.priority == ItemPriority.URGENT -> Color(0xFFFFCDD2)
+        item.priority == ItemPriority.NOT_URGENT -> Color(0xFFFFF9C4)
+        else -> MaterialTheme.colorScheme.surface
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onToggle,
-        colors = CardDefaults.cardColors(
-            containerColor = if (item.isBought)
-                MaterialTheme.colorScheme.surfaceVariant
-            else MaterialTheme.colorScheme.surface
-        )
+        colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

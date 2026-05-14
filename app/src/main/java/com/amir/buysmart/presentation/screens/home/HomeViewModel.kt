@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.amir.buysmart.data.remote.GeminiLocationClassifier
 import com.amir.buysmart.domain.model.ItemNotePresets
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
@@ -23,6 +24,7 @@ import javax.inject.Inject
 data class HomeUiState(
     val activeList: ShoppingList? = null,
     val itemsByLocation: Map<ShoppingLocation, List<ShoppingItem>> = emptyMap(),
+    val pendingRefillItems: List<ShoppingItem> = emptyList(),
     val totalItems: Int = 0,
     val isLoading: Boolean = true,
     val isCreatingList: Boolean = false,
@@ -31,6 +33,7 @@ data class HomeUiState(
     val quickAddNote: String = "",
     val quickAddLocation: ShoppingLocation = ShoppingLocation.SUPERMARKET,
     val quickAddLocationManuallySet: Boolean = false,
+    val quickAddPriority: ItemPriority = ItemPriority.NORMAL,
     val quickAddSuggestions: List<String> = emptyList(),
     val quickAddPresetNotes: List<String> = emptyList(),
     val quickAddDuplicate: ShoppingItem? = null,
@@ -105,10 +108,17 @@ class HomeViewModel @Inject constructor(
         itemsJob?.cancel()
         itemsJob = viewModelScope.launch {
             itemRepository.getItemsForList(listId).collect { items ->
+                val activeItems = items.filter { !it.pendingRefill }
                 val grouped = ShoppingLocation.entries.associateWith { loc ->
-                    items.filter { it.location == loc }.sortedBy { it.isBought }
+                    activeItems.filter { it.location == loc }
+                        .sortedWith(compareBy({ it.isBought }, { it.priority.ordinal }))
                 }.filterValues { it.isNotEmpty() }
-                _uiState.update { it.copy(itemsByLocation = grouped, totalItems = items.size) }
+                val pending = items.filter { it.pendingRefill }
+                _uiState.update { it.copy(
+                    itemsByLocation = grouped,
+                    pendingRefillItems = pending,
+                    totalItems = activeItems.size
+                )}
             }
         }
     }
@@ -141,6 +151,8 @@ class HomeViewModel @Inject constructor(
         locationJob?.cancel()
         if (name.length >= 3) {
             locationJob = viewModelScope.launch {
+                // hints סופיים — לא דורסים עם History או Gemini
+                if (hintsLoc != null) return@launch
                 val history = itemRepository.getHistory(name)
                 if (history != null && !_uiState.value.quickAddLocationManuallySet) {
                     _uiState.update { state -> state.copy(
@@ -149,7 +161,7 @@ class HomeViewModel @Inject constructor(
                     )}
                     return@launch
                 }
-                if (hintsLoc == null && !_uiState.value.quickAddLocationManuallySet) {
+                if (!_uiState.value.quickAddLocationManuallySet) {
                     delay(600)
                     val loc = geminiClassifier.classify(name) ?: return@launch
                     if (!_uiState.value.quickAddLocationManuallySet) {
@@ -183,6 +195,9 @@ class HomeViewModel @Inject constructor(
     fun onQuickAddLocationChange(loc: ShoppingLocation) =
         _uiState.update { it.copy(quickAddLocation = loc, quickAddLocationManuallySet = true) }
 
+    fun onQuickAddPriorityChange(priority: ItemPriority) =
+        _uiState.update { it.copy(quickAddPriority = priority) }
+
     fun onQuickAddPresetNoteToggle(preset: String) {
         val parts = _uiState.value.quickAddNote
             .split(", ").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
@@ -214,6 +229,7 @@ class HomeViewModel @Inject constructor(
                 note = state.quickAddNote.trim(),
                 location = state.quickAddLocation,
                 type = ItemType.RECURRING,
+                priority = state.quickAddPriority,
                 addedBy = userId,
                 addedByName = displayName,
                 listId = listId
@@ -253,6 +269,7 @@ class HomeViewModel @Inject constructor(
             quickAddNote = "",
             quickAddLocation = ShoppingLocation.SUPERMARKET,
             quickAddLocationManuallySet = false,
+            quickAddPriority = ItemPriority.NORMAL,
             quickAddSuggestions = emptyList(),
             quickAddPresetNotes = emptyList(),
             quickAddDuplicate = null
@@ -312,6 +329,13 @@ class HomeViewModel @Inject constructor(
 
     fun onEditTypeChange(type: ItemType) =
         _uiState.update { it.copy(editingItem = it.editingItem?.copy(type = type)) }
+
+    fun onEditPriorityChange(priority: ItemPriority) =
+        _uiState.update { it.copy(editingItem = it.editingItem?.copy(priority = priority)) }
+
+    fun approvePendingRefill(item: ShoppingItem) {
+        viewModelScope.launch { itemRepository.approvePendingRefill(item) }
+    }
 
     fun saveEdit() {
         val item = _uiState.value.editingItem ?: return

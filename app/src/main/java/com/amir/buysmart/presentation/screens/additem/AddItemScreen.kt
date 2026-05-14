@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,8 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.presentation.components.VoiceInputButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -70,30 +73,40 @@ fun AddItemScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // שם פריט עם autocomplete
+            // שם פריט עם autocomplete + מיקרופון
             var dropdownExpanded by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = dropdownExpanded && state.suggestions.isNotEmpty(),
-                onExpandedChange = { dropdownExpanded = it }
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                OutlinedTextField(
-                    value = state.name,
-                    onValueChange = { viewModel.onNameChange(it); dropdownExpanded = true },
-                    label = { Text("שם המוצר") },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    singleLine = true
-                )
-                ExposedDropdownMenu(
+                ExposedDropdownMenuBox(
                     expanded = dropdownExpanded && state.suggestions.isNotEmpty(),
-                    onDismissRequest = { viewModel.clearSuggestions(); dropdownExpanded = false }
+                    onExpandedChange = { dropdownExpanded = it },
+                    modifier = Modifier.weight(1f)
                 ) {
-                    state.suggestions.forEach { s ->
-                        DropdownMenuItem(
-                            text = { Text(s) },
-                            onClick = { viewModel.onSuggestionSelected(s); dropdownExpanded = false }
-                        )
+                    OutlinedTextField(
+                        value = state.name,
+                        onValueChange = { viewModel.onNameChange(it); dropdownExpanded = true },
+                        label = { Text("שם המוצר") },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        singleLine = true
+                    )
+                    ExposedDropdownMenu(
+                        expanded = dropdownExpanded && state.suggestions.isNotEmpty(),
+                        onDismissRequest = { viewModel.clearSuggestions(); dropdownExpanded = false }
+                    ) {
+                        state.suggestions.forEach { s ->
+                            DropdownMenuItem(
+                                text = { Text(s) },
+                                onClick = { viewModel.onSuggestionSelected(s); dropdownExpanded = false }
+                            )
+                        }
                     }
                 }
+                VoiceInputButton(
+                    onResult = { viewModel.onNameChange(it) },
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
 
             // כמות
@@ -143,7 +156,7 @@ fun AddItemScreen(
                 maxLines = 2
             )
 
-            // מקום קנייה — עם אינדיקציה ל-auto-suggest
+            // מקום קנייה
             Text("מקום קנייה", style = MaterialTheme.typography.titleMedium)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -155,6 +168,18 @@ fun AddItemScreen(
                         onClick = { viewModel.onLocationChange(location) },
                         label = { Text("${location.emoji} ${location.displayName}") }
                     )
+                }
+            }
+
+            // דחיפות
+            Text("דחיפות", style = MaterialTheme.typography.titleMedium)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                ItemPriority.entries.forEachIndexed { index, priority ->
+                    SegmentedButton(
+                        selected = state.priority == priority,
+                        onClick = { viewModel.onPriorityChange(priority) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ItemPriority.entries.size)
+                    ) { Text("${priority.emoji} ${priority.displayName}") }
                 }
             }
 

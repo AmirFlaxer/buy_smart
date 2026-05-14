@@ -2,6 +2,7 @@ package com.amir.buysmart.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
@@ -17,7 +18,9 @@ data class ShoppingItemEntity(
     val isBought: Boolean,
     val addedBy: String,
     val addedByName: String = "",
-    val listId: String
+    val listId: String,
+    val priority: String = "NORMAL",
+    val pendingRefill: Boolean = false
 ) {
     fun toDomain() = ShoppingItem(
         id = id,
@@ -29,7 +32,9 @@ data class ShoppingItemEntity(
         isBought = isBought,
         addedBy = addedBy,
         addedByName = addedByName,
-        listId = listId
+        listId = listId,
+        priority = try { ItemPriority.valueOf(priority) } catch (e: Exception) { ItemPriority.NORMAL },
+        pendingRefill = pendingRefill
     )
 
     companion object {
@@ -43,7 +48,9 @@ data class ShoppingItemEntity(
             isBought = item.isBought,
             addedBy = item.addedBy,
             addedByName = item.addedByName,
-            listId = item.listId
+            listId = item.listId,
+            priority = item.priority.name,
+            pendingRefill = item.pendingRefill
         )
     }
 }

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- עגלת קניות לבנה - ממורכזת בתוך ה-safe zone (21dp-87dp) -->
+    <!-- ידית עגלה -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,32 L33,32 L38.5,58 L72,58 L76,42 L36,42 L35,36 L28,36 Z" />
+
+    <!-- גלגלים -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,65 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,65 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+
+    <!-- ניצוץ/כוכב זהב בפינה ימין עליון (בתוך safe zone) -->
+    <!-- ניצוץ גדול -->
+    <path
+        android:fillColor="#FFD740"
+        android:pathData="M80,28 L81.5,32 L85.5,28 L81.5,24 Z" />
+    <path
+        android:fillColor="#FFD740"
+        android:pathData="M80,28 L84,29.5 L80,33.5 L76,29.5 Z" />
+    <!-- ניצוץ קטן -->
+    <path
+        android:fillColor="#FFECB3"
+        android:pathData="M73,22 L74,24.5 L76.5,22 L74,19.5 Z" />
+    <path
+        android:fillColor="#FFECB3"
+        android:pathData="M73,22 L75.5,23 L73,25.5 L70.5,23 Z" />
+
+    <!-- נקודת ניצוץ קטנה נוספת -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M84,38 L84.8,40 L87,38 L84.8,36 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M84,38 L86,38.8 L84,40.8 L82,38.8 Z" />
+
+</vector>

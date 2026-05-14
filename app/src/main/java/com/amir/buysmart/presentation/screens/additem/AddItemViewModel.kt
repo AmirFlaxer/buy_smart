@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.amir.buysmart.data.remote.GeminiLocationClassifier
 import com.amir.buysmart.domain.model.ItemNotePresets
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
@@ -26,6 +27,7 @@ data class AddItemUiState(
     val location: ShoppingLocation = ShoppingLocation.SUPERMARKET,
     val locationManuallySet: Boolean = false,
     val type: ItemType = ItemType.RECURRING,
+    val priority: ItemPriority = ItemPriority.NORMAL,
     val suggestions: List<String> = emptyList(),
     val presetNotes: List<String> = emptyList(),
     val duplicateItem: ShoppingItem? = null,
@@ -71,6 +73,8 @@ class AddItemViewModel @Inject constructor(
         locationJob?.cancel()
         if (name.length >= 3) {
             locationJob = viewModelScope.launch {
+                // hints סופיים — לא דורסים עם History או Gemini
+                if (hintsLoc != null) return@launch
                 val history = itemRepository.getHistory(name)
                 if (history != null && !_uiState.value.locationManuallySet) {
                     _uiState.update { state -> state.copy(
@@ -80,7 +84,7 @@ class AddItemViewModel @Inject constructor(
                     )}
                     return@launch
                 }
-                if (hintsLoc == null && !_uiState.value.locationManuallySet) {
+                if (!_uiState.value.locationManuallySet) {
                     delay(600)
                     val loc = geminiClassifier.classify(name) ?: return@launch
                     if (!_uiState.value.locationManuallySet) {
@@ -115,7 +119,6 @@ class AddItemViewModel @Inject constructor(
 
     fun clearSuggestions() = _uiState.update { it.copy(suggestions = emptyList()) }
     fun onQuantityChange(q: String) = _uiState.update { it.copy(quantity = q) }
-
     fun onNoteChange(note: String) = _uiState.update { it.copy(note = note) }
 
     fun onPresetNoteToggle(preset: String) {
@@ -129,6 +132,7 @@ class AddItemViewModel @Inject constructor(
         _uiState.update { it.copy(location = location, locationManuallySet = true) }
 
     fun onTypeChange(type: ItemType) = _uiState.update { it.copy(type = type) }
+    fun onPriorityChange(priority: ItemPriority) = _uiState.update { it.copy(priority = priority) }
 
     fun save(listId: String) {
         val state = _uiState.value
@@ -171,6 +175,7 @@ class AddItemViewModel @Inject constructor(
             note = state.note.trim(),
             location = state.location,
             type = state.type,
+            priority = state.priority,
             addedBy = auth.currentUser?.uid ?: "",
             addedByName = displayName,
             listId = listId

@@ -17,4 +17,5 @@ interface ItemRepository {
     suspend fun getItemByName(name: String, listId: String): ShoppingItem?
     suspend fun saveHistory(name: String, location: ShoppingLocation, note: String, quantity: String)
     suspend fun getHistory(name: String): ItemHistory?
+    suspend fun approvePendingRefill(item: ShoppingItem)
 }

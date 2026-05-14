@@ -1,5 +1,6 @@
 package com.amir.buysmart.data.remote
 
+import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
@@ -37,7 +38,9 @@ class FirestoreService @Inject constructor(
                             isBought = doc.getBoolean("isBought") ?: false,
                             addedBy = doc.getString("addedBy") ?: "",
                             addedByName = doc.getString("addedByName") ?: "",
-                            listId = listId
+                            listId = listId,
+                            priority = try { ItemPriority.valueOf(doc.getString("priority") ?: "NORMAL") } catch (e: Exception) { ItemPriority.NORMAL },
+                            pendingRefill = doc.getBoolean("pendingRefill") ?: false
                         )
                     } catch (e: Exception) { null }
                 } ?: emptyList()
@@ -55,7 +58,9 @@ class FirestoreService @Inject constructor(
             "type" to item.type.name,
             "isBought" to item.isBought,
             "addedBy" to item.addedBy,
-            "addedByName" to item.addedByName
+            "addedByName" to item.addedByName,
+            "priority" to item.priority.name,
+            "pendingRefill" to item.pendingRefill
         )
         if (item.id.isBlank()) {
             itemsCollection(item.listId).add(data).await()
@@ -70,13 +75,20 @@ class FirestoreService @Inject constructor(
             "quantity" to item.quantity,
             "note" to item.note,
             "location" to item.location.name,
-            "type" to item.type.name
+            "type" to item.type.name,
+            "priority" to item.priority.name
         )
         itemsCollection(item.listId).document(item.id).update(data).await()
     }
 
     suspend fun toggleBought(itemId: String, listId: String, isBought: Boolean) {
         itemsCollection(listId).document(itemId).update("isBought", isBought).await()
+    }
+
+    suspend fun setPendingRefill(itemId: String, listId: String, pendingRefill: Boolean) {
+        itemsCollection(listId).document(itemId)
+            .update(mapOf("pendingRefill" to pendingRefill, "isBought" to false))
+            .await()
     }
 
     suspend fun deleteItem(itemId: String, listId: String) {
@@ -102,7 +114,9 @@ class FirestoreService @Inject constructor(
                         isBought = true,
                         addedBy = doc.getString("addedBy") ?: "",
                         addedByName = doc.getString("addedByName") ?: "",
-                        listId = listId
+                        listId = listId,
+                        priority = try { ItemPriority.valueOf(doc.getString("priority") ?: "NORMAL") } catch (e: Exception) { ItemPriority.NORMAL },
+                        pendingRefill = doc.getBoolean("pendingRefill") ?: false
                     )
                 } catch (e: Exception) { null }
             }

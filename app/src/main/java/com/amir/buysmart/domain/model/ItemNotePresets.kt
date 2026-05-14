@@ -75,6 +75,27 @@ object ItemNotePresets {
         "פלאפל" to ShoppingLocation.DELI,
         "שווארמה" to ShoppingLocation.DELI,
         "אוכל מוכן" to ShoppingLocation.DELI,
+        // סופר — מוצרים שעלולים להתבלבל עם ירקניה/אחר
+        "חלב" to ShoppingLocation.SUPERMARKET,
+        "גבינה" to ShoppingLocation.SUPERMARKET,
+        "יוגורט" to ShoppingLocation.SUPERMARKET,
+        "ביצים" to ShoppingLocation.SUPERMARKET,
+        "שמנת" to ShoppingLocation.SUPERMARKET,
+        "חמאה" to ShoppingLocation.SUPERMARKET,
+        "אורז" to ShoppingLocation.SUPERMARKET,
+        "פסטה" to ShoppingLocation.SUPERMARKET,
+        "שמן" to ShoppingLocation.SUPERMARKET,
+        "קפה" to ShoppingLocation.SUPERMARKET,
+        "תה" to ShoppingLocation.SUPERMARKET,
+        "מיץ" to ShoppingLocation.SUPERMARKET,
+        "שוקולד" to ShoppingLocation.SUPERMARKET,
+        "חטיף" to ShoppingLocation.SUPERMARKET,
+        "מים" to ShoppingLocation.SUPERMARKET,
+        "עוף" to ShoppingLocation.SUPERMARKET,
+        "בשר" to ShoppingLocation.SUPERMARKET,
+        "דג" to ShoppingLocation.SUPERMARKET,
+        "נייר" to ShoppingLocation.SUPERMARKET,
+        "סבון" to ShoppingLocation.SUPERMARKET,
     )
 
     fun getPresetNotes(name: String): List<String> {

@@ -38,4 +38,7 @@ interface ItemDao {
 
     @Query("SELECT * FROM shopping_items WHERE listId = :listId AND LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun getItemByName(name: String, listId: String): ShoppingItemEntity?
+
+    @Query("UPDATE shopping_items SET pendingRefill = :pendingRefill, isBought = 0 WHERE id = :id")
+    suspend fun setPendingRefillAndResetBought(id: String, pendingRefill: Boolean)
 }

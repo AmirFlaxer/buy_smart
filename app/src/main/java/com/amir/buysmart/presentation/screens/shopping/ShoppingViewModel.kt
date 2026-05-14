@@ -44,7 +44,10 @@ class ShoppingViewModel @Inject constructor(
     private fun loadItems(listId: String, location: ShoppingLocation) {
         viewModelScope.launch {
             getItemsByLocation(listId, location).collect { items ->
-                _uiState.update { it.copy(items = items, isLoading = false) }
+                _uiState.update { it.copy(
+                    items = items.sortedWith(compareBy({ it.isBought }, { it.priority.ordinal })),
+                    isLoading = false
+                )}
             }
         }
     }
