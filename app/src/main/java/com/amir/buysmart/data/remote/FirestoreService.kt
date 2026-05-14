@@ -5,7 +5,6 @@ import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ktx.toObject
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -31,10 +30,13 @@ class FirestoreService @Inject constructor(
                         ShoppingItem(
                             id = doc.id,
                             name = doc.getString("name") ?: "",
+                            quantity = doc.getString("quantity") ?: "",
+                            note = doc.getString("note") ?: "",
                             location = ShoppingLocation.valueOf(doc.getString("location") ?: "SUPERMARKET"),
                             type = ItemType.valueOf(doc.getString("type") ?: "ONE_TIME"),
                             isBought = doc.getBoolean("isBought") ?: false,
                             addedBy = doc.getString("addedBy") ?: "",
+                            addedByName = doc.getString("addedByName") ?: "",
                             listId = listId
                         )
                     } catch (e: Exception) { null }
@@ -47,16 +49,30 @@ class FirestoreService @Inject constructor(
     suspend fun addItem(item: ShoppingItem) {
         val data = mapOf(
             "name" to item.name,
+            "quantity" to item.quantity,
+            "note" to item.note,
             "location" to item.location.name,
             "type" to item.type.name,
             "isBought" to item.isBought,
-            "addedBy" to item.addedBy
+            "addedBy" to item.addedBy,
+            "addedByName" to item.addedByName
         )
         if (item.id.isBlank()) {
             itemsCollection(item.listId).add(data).await()
         } else {
             itemsCollection(item.listId).document(item.id).set(data).await()
         }
+    }
+
+    suspend fun updateItem(item: ShoppingItem) {
+        val data = mapOf(
+            "name" to item.name,
+            "quantity" to item.quantity,
+            "note" to item.note,
+            "location" to item.location.name,
+            "type" to item.type.name
+        )
+        itemsCollection(item.listId).document(item.id).update(data).await()
     }
 
     suspend fun toggleBought(itemId: String, listId: String, isBought: Boolean) {
@@ -79,10 +95,13 @@ class FirestoreService @Inject constructor(
                     ShoppingItem(
                         id = doc.id,
                         name = doc.getString("name") ?: "",
+                        quantity = doc.getString("quantity") ?: "",
+                        note = doc.getString("note") ?: "",
                         location = location,
                         type = ItemType.valueOf(doc.getString("type") ?: "ONE_TIME"),
                         isBought = true,
                         addedBy = doc.getString("addedBy") ?: "",
+                        addedByName = doc.getString("addedByName") ?: "",
                         listId = listId
                     )
                 } catch (e: Exception) { null }
@@ -137,5 +156,11 @@ class FirestoreService @Inject constructor(
             members = (doc.get("members") as? List<*>)?.filterIsInstance<String>()?.plus(userId) ?: listOf(userId),
             inviteCode = inviteCode
         )
+    }
+
+    suspend fun saveUserFcmToken(userId: String, token: String) {
+        firestore.collection("users").document(userId)
+            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
+            .await()
     }
 }

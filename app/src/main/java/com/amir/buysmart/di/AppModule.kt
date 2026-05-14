@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.amir.buysmart.data.local.AppDatabase
 import com.amir.buysmart.data.local.ItemDao
+import com.amir.buysmart.data.local.ItemHistoryDao
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import dagger.Module
@@ -30,10 +31,15 @@ object AppModule {
 
     @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "buy_smart.db").build()
+        Room.databaseBuilder(context, AppDatabase::class.java, "buy_smart.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .build()
 
     @Provides
     fun provideItemDao(db: AppDatabase): ItemDao = db.itemDao()
+
+    @Provides
+    fun provideItemHistoryDao(db: AppDatabase): ItemHistoryDao = db.itemHistoryDao()
 
     @Provides @Singleton
     fun provideDataStore(@ApplicationContext context: Context): DataStore<Preferences> =

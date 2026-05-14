@@ -1,8 +1,11 @@
 package com.amir.buysmart.data.repository
 
 import com.amir.buysmart.data.local.ItemDao
+import com.amir.buysmart.data.local.ItemHistoryDao
+import com.amir.buysmart.data.local.entity.ItemHistoryEntity
 import com.amir.buysmart.data.local.entity.ShoppingItemEntity
 import com.amir.buysmart.data.remote.FirestoreService
+import com.amir.buysmart.domain.model.ItemHistory
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
@@ -14,7 +17,8 @@ import javax.inject.Inject
 
 class ItemRepositoryImpl @Inject constructor(
     private val firestoreService: FirestoreService,
-    private val itemDao: ItemDao
+    private val itemDao: ItemDao,
+    private val historyDao: ItemHistoryDao
 ) : ItemRepository {
 
     override fun getItemsForList(listId: String): Flow<List<ShoppingItem>> {
@@ -41,6 +45,29 @@ class ItemRepositoryImpl @Inject constructor(
         firestoreService.deleteItem(itemId, listId)
         itemDao.deleteItem(itemId)
     }
+
+    override suspend fun searchItemNames(query: String, listId: String): List<String> =
+        itemDao.searchItemNames(query, listId)
+
+    override suspend fun getItemByName(name: String, listId: String): ShoppingItem? =
+        itemDao.getItemByName(name, listId)?.toDomain()
+
+    override suspend fun updateItem(item: ShoppingItem) {
+        firestoreService.updateItem(item)
+        itemDao.updateItem(ShoppingItemEntity.fromDomain(item))
+    }
+
+    override suspend fun saveHistory(name: String, location: ShoppingLocation, note: String, quantity: String) {
+        historyDao.upsert(ItemHistoryEntity(
+            name = name.trim().lowercase(),
+            location = location.name,
+            note = note,
+            quantity = quantity
+        ))
+    }
+
+    override suspend fun getHistory(name: String): ItemHistory? =
+        historyDao.getByName(name.trim().lowercase())?.toDomain()
 
     override suspend fun finishShopping(listId: String, location: ShoppingLocation) {
         val boughtItems = firestoreService.getBoughtItemsByLocation(listId, location)

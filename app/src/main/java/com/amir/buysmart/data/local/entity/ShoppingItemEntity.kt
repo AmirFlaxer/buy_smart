@@ -10,19 +10,25 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 data class ShoppingItemEntity(
     @PrimaryKey val id: String,
     val name: String,
+    val quantity: String = "",
+    val note: String = "",
     val location: String,
     val type: String,
     val isBought: Boolean,
     val addedBy: String,
+    val addedByName: String = "",
     val listId: String
 ) {
     fun toDomain() = ShoppingItem(
         id = id,
         name = name,
+        quantity = quantity,
+        note = note,
         location = ShoppingLocation.valueOf(location),
         type = ItemType.valueOf(type),
         isBought = isBought,
         addedBy = addedBy,
+        addedByName = addedByName,
         listId = listId
     )
 
@@ -30,10 +36,13 @@ data class ShoppingItemEntity(
         fun fromDomain(item: ShoppingItem) = ShoppingItemEntity(
             id = item.id,
             name = item.name,
+            quantity = item.quantity,
+            note = item.note,
             location = item.location.name,
             type = item.type.name,
             isBought = item.isBought,
             addedBy = item.addedBy,
+            addedByName = item.addedByName,
             listId = item.listId
         )
     }

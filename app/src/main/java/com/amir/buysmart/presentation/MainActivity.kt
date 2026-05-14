@@ -13,9 +13,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val inviteCode = intent.data
+            ?.takeIf { it.scheme == "buysmart" && it.host == "join" }
+            ?.lastPathSegment
         setContent {
             BuySmartTheme {
-                AppNavGraph()
+                AppNavGraph(inviteCodeFromLink = inviteCode)
             }
         }
     }

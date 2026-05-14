@@ -22,7 +22,7 @@ private object Routes {
 }
 
 @Composable
-fun AppNavGraph() {
+fun AppNavGraph(inviteCodeFromLink: String? = null) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = Routes.AUTH) {
@@ -35,7 +35,8 @@ fun AppNavGraph() {
         composable(Routes.HOME) {
             HomeScreen(
                 onAddItem = { listId -> navController.navigate(Routes.addItem(listId)) },
-                onGoShopping = { listId -> navController.navigate(Routes.shopping(listId)) }
+                onGoShopping = { listId -> navController.navigate(Routes.shopping(listId)) },
+                inviteCodeFromLink = inviteCodeFromLink
             )
         }
 

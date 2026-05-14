@@ -1,9 +1,11 @@
 package com.amir.buysmart.presentation.screens.additem
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -14,7 +16,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingLocation
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddItemScreen(
     listId: String,
@@ -23,8 +25,28 @@ fun AddItemScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(state.saved) {
-        if (state.saved) onBack()
+    LaunchedEffect(listId) { viewModel.setListId(listId) }
+    LaunchedEffect(state.saved) { if (state.saved) onBack() }
+
+    // דיאלוג כפילות
+    state.duplicateItem?.let { existing ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDuplicateDialog,
+            title = { Text("${existing.name} כבר ברשימה") },
+            text = {
+                val qtyText = if (existing.quantity.isNotBlank()) " (${existing.quantity})" else ""
+                Text("${existing.name}$qtyText כבר קיים ב${existing.location.displayName}.\nמה לעשות?")
+            },
+            confirmButton = {
+                Button(onClick = viewModel::increaseQuantityOfDuplicate) { Text("הגדל כמות") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = viewModel::dismissDuplicateDialog) { Text("ביטול") }
+                    OutlinedButton(onClick = { viewModel.saveAsDuplicate(listId) }) { Text("הוסף בכל זאת") }
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -32,33 +54,102 @@ fun AddItemScreen(
             TopAppBar(
                 title = { Text("הוסף פריט") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "חזור")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "חזור") }
                 }
             )
-        }
+        },
+        contentWindowInsets = WindowInsets(0)
     ) { padding ->
         Column(
-            Modifier.padding(padding).padding(16.dp).fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            // שם פריט עם autocomplete
+            var dropdownExpanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = dropdownExpanded && state.suggestions.isNotEmpty(),
+                onExpandedChange = { dropdownExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = { viewModel.onNameChange(it); dropdownExpanded = true },
+                    label = { Text("שם המוצר") },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    singleLine = true
+                )
+                ExposedDropdownMenu(
+                    expanded = dropdownExpanded && state.suggestions.isNotEmpty(),
+                    onDismissRequest = { viewModel.clearSuggestions(); dropdownExpanded = false }
+                ) {
+                    state.suggestions.forEach { s ->
+                        DropdownMenuItem(
+                            text = { Text(s) },
+                            onClick = { viewModel.onSuggestionSelected(s); dropdownExpanded = false }
+                        )
+                    }
+                }
+            }
+
+            // כמות
             OutlinedTextField(
-                value = state.name,
-                onValueChange = viewModel::onNameChange,
-                label = { Text("שם המוצר") },
+                value = state.quantity,
+                onValueChange = viewModel::onQuantityChange,
+                label = { Text("כמות (אופציונלי)") },
+                placeholder = { Text("לדוגמה: 2, 500 גרם, ליטר") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
+            // הערות מובנות (לפי שם הפריט)
+            if (state.presetNotes.isNotEmpty()) {
+                Text("הערות מהירות", style = MaterialTheme.typography.titleSmall)
+                val selectedParts = state.note.split(", ").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    state.presetNotes.forEach { preset ->
+                        FilterChip(
+                            selected = preset in selectedParts,
+                            onClick = { viewModel.onPresetNoteToggle(preset) },
+                            label = { Text(preset) }
+                        )
+                    }
+                }
+            }
+
+            // הערה חופשית
+            val presets = state.presetNotes.toSet()
+            val selectedParts = state.note.split(", ").map { it.trim() }.filter { it.isNotBlank() }
+            val freeText = selectedParts.filter { it !in presets }.joinToString(", ")
+            var freeNoteInput by remember { mutableStateOf(freeText) }
+            OutlinedTextField(
+                value = freeNoteInput,
+                onValueChange = { input ->
+                    freeNoteInput = input
+                    val selectedPresets = selectedParts.filter { it in presets }
+                    val parts = (selectedPresets + listOf(input.trim())).filter { it.isNotBlank() }
+                    viewModel.onNoteChange(parts.joinToString(", "))
+                },
+                label = { Text("הערה חופשית (אופציונלי)") },
+                placeholder = { Text("לדוגמה: של יטבתה, ב-500 גרם") },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 2
+            )
+
+            // מקום קנייה — עם אינדיקציה ל-auto-suggest
             Text("מקום קנייה", style = MaterialTheme.typography.titleMedium)
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.height(120.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(ShoppingLocation.entries) { location ->
+                ShoppingLocation.entries.forEach { location ->
                     FilterChip(
                         selected = state.location == location,
                         onClick = { viewModel.onLocationChange(location) },
@@ -67,18 +158,19 @@ fun AddItemScreen(
                 }
             }
 
+            // סוג פריט
             Text("סוג", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ItemType.entries.forEach { type ->
-                    FilterChip(
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                ItemType.entries.forEachIndexed { index, type ->
+                    SegmentedButton(
                         selected = state.type == type,
                         onClick = { viewModel.onTypeChange(type) },
-                        label = { Text(type.displayName) }
-                    )
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ItemType.entries.size)
+                    ) { Text(type.displayName) }
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = { viewModel.save(listId) },

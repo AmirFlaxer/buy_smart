@@ -2,9 +2,37 @@ package com.amir.buysmart.data.local
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.amir.buysmart.data.local.entity.ItemHistoryEntity
 import com.amir.buysmart.data.local.entity.ShoppingItemEntity
 
-@Database(entities = [ShoppingItemEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [ShoppingItemEntity::class, ItemHistoryEntity::class],
+    version = 3,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun itemDao(): ItemDao
+    abstract fun itemHistoryDao(): ItemHistoryDao
+
+    companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN quantity TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN addedByName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS item_history " +
+                    "(name TEXT NOT NULL PRIMARY KEY, location TEXT NOT NULL, " +
+                    "note TEXT NOT NULL, quantity TEXT NOT NULL)"
+                )
+            }
+        }
+    }
 }

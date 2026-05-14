@@ -29,4 +29,13 @@ interface ItemDao {
 
     @Query("UPDATE shopping_items SET isBought = 0 WHERE id IN (:ids)")
     suspend fun resetBoughtForIds(ids: List<String>)
+
+    @Query("SELECT DISTINCT name FROM shopping_items WHERE listId = :listId AND name LIKE '%' || :query || '%' ORDER BY name LIMIT 6")
+    suspend fun searchItemNames(query: String, listId: String): List<String>
+
+    @Update
+    suspend fun updateItem(item: ShoppingItemEntity)
+
+    @Query("SELECT * FROM shopping_items WHERE listId = :listId AND LOWER(name) = LOWER(:name) LIMIT 1")
+    suspend fun getItemByName(name: String, listId: String): ShoppingItemEntity?
 }

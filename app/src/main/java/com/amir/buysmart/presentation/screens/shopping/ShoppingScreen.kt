@@ -2,7 +2,6 @@ package com.amir.buysmart.presentation.screens.shopping
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -11,11 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ShoppingScreen(
     listId: String,
@@ -23,6 +24,7 @@ fun ShoppingScreen(
     viewModel: ShoppingViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showFinishDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(listId) { viewModel.init(listId) }
     LaunchedEffect(state.finished) { if (state.finished) onBack() }
@@ -40,21 +42,32 @@ fun ShoppingScreen(
         },
         bottomBar = {
             Surface(shadowElevation = 8.dp) {
+                val boughtCount = state.items.count { it.isBought }
                 Button(
-                    onClick = viewModel::finishShopping,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp)
+                    onClick = { showFinishDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .height(52.dp),
+                    enabled = boughtCount > 0
                 ) {
-                    Text("סיימתי קניות ב-${state.selectedLocation.displayName}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (boughtCount > 0) "סיימתי ב${state.selectedLocation.displayName} ($boughtCount פריטים)"
+                        else "סמן פריטים שנקנו",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
         }
     ) { padding ->
         Column(Modifier.padding(padding)) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            FlowRow(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(ShoppingLocation.entries) { location ->
+                ShoppingLocation.entries.forEach { location ->
                     FilterChip(
                         selected = state.selectedLocation == location,
                         onClick = { viewModel.selectLocation(location) },
@@ -65,52 +78,136 @@ fun ShoppingScreen(
 
             HorizontalDivider()
 
-            if (state.isLoading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // Progress bar
+            if (state.items.isNotEmpty()) {
+                val boughtCount = state.items.count { it.isBought }
+                val progress = boughtCount.toFloat() / state.items.size
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "${state.selectedLocation.displayName}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "$boughtCount / ${state.items.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                HorizontalDivider()
+            }
+
+            when {
+                state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else if (state.items.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("אין פריטים ב${state.selectedLocation.displayName}")
+                state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("אין פריטים ב${state.selectedLocation.displayName}")
+                        Text("בחר מקום אחר", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            } else {
-                LazyColumn(
+                else -> LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(state.items, key = { it.id }) { item ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (item.isBought)
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                else MaterialTheme.colorScheme.surface
-                            )
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = item.isBought,
-                                    onCheckedChange = { viewModel.toggleBought(item) }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = item.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    textDecoration = if (item.isBought) TextDecoration.LineThrough else null,
-                                    color = if (item.isBought)
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                                    else MaterialTheme.colorScheme.onSurface
-                                )
-                                if (item.type.name == "RECURRING") {
-                                    Spacer(Modifier.weight(1f))
-                                    Text("🔄", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
+                        ShoppingItemCard(
+                            item = item,
+                            onToggle = { viewModel.toggleBought(item) }
+                        )
                     }
+                }
+            }
+        }
+    }
+
+    if (showFinishDialog) {
+        val boughtCount = state.items.count { it.isBought }
+        AlertDialog(
+            onDismissRequest = { showFinishDialog = false },
+            title = { Text("סיום קניות ב${state.selectedLocation.displayName}") },
+            text = {
+                Text("נקנו $boughtCount פריטים — הם יאופסו לרשימה לקנייה הבאה.\nלסיים?")
+            },
+            confirmButton = {
+                Button(onClick = { showFinishDialog = false; viewModel.finishShopping() }) {
+                    Text("כן, סיימתי")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFinishDialog = false }) { Text("המשך קניות") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onToggle,
+        colors = CardDefaults.cardColors(
+            containerColor = if (item.isBought)
+                MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = item.isBought,
+                onCheckedChange = { onToggle() }
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textDecoration = if (item.isBought) TextDecoration.LineThrough else null,
+                        color = if (item.isBought)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (item.quantity.isNotBlank()) {
+                        Text(
+                            text = " × ${item.quantity}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (item.isBought)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                if (item.note.isNotBlank()) {
+                    Text(
+                        text = item.note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (item.addedByName.isNotBlank()) {
+                    Text(
+                        text = item.addedByName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
                 }
             }
         }
