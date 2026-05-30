@@ -1,14 +1,19 @@
 package com.amir.buysmart.presentation.screens.additem
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.amir.buysmart.data.remote.GeminiLocationClassifier
+import com.amir.buysmart.data.remote.ImageUploader
 import com.amir.buysmart.domain.model.ItemNotePresets
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
+import com.amir.buysmart.domain.repository.ListRepository
 import com.amir.buysmart.domain.usecase.AddItemUseCase
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +30,7 @@ data class AddItemUiState(
     val quantity: String = "",
     val note: String = "",
     val location: ShoppingLocation = ShoppingLocation.SUPERMARKET,
+    val customLocation: String = "",
     val locationManuallySet: Boolean = false,
     val type: ItemType = ItemType.RECURRING,
     val priority: ItemPriority = ItemPriority.NORMAL,
@@ -32,13 +38,25 @@ data class AddItemUiState(
     val presetNotes: List<String> = emptyList(),
     val duplicateItem: ShoppingItem? = null,
     val isSaving: Boolean = false,
-    val saved: Boolean = false
-)
+    val saved: Boolean = false,
+    val customLocations: List<String> = emptyList(),
+    /** URL הסופי של תמונה (אחרי העלאה) */
+    val imageUrl: String = "",
+    /** Uri מקומי בזמן העלאה — לתצוגה מקדימה */
+    val pendingImageUri: Uri? = null,
+    val isUploadingImage: Boolean = false
+) {
+    val selectedKey: LocationKey
+        get() = if (customLocation.isNotBlank()) LocationKey.Custom(customLocation)
+                else LocationKey.BuiltIn(location)
+}
 
 @HiltViewModel
 class AddItemViewModel @Inject constructor(
     private val addItemUseCase: AddItemUseCase,
     private val itemRepository: ItemRepository,
+    private val listRepository: ListRepository,
+    private val imageUploader: ImageUploader,
     private val auth: FirebaseAuth,
     private val geminiClassifier: GeminiLocationClassifier
 ) : ViewModel() {
@@ -48,8 +66,19 @@ class AddItemViewModel @Inject constructor(
 
     private var listId = ""
     private var locationJob: Job? = null
+    private var listObserveJob: Job? = null
 
-    fun setListId(id: String) { listId = id }
+    fun setListId(id: String) {
+        listId = id
+        listObserveJob?.cancel()
+        listObserveJob = viewModelScope.launch {
+            val userId = auth.currentUser?.uid ?: return@launch
+            listRepository.getUserLists(userId).collect { lists ->
+                val list = lists.find { it.id == id }
+                _uiState.update { it.copy(customLocations = list?.customLocations ?: emptyList()) }
+            }
+        }
+    }
 
     fun onNameChange(name: String) {
         val hintsLoc = if (!_uiState.value.locationManuallySet)
@@ -128,8 +157,50 @@ class AddItemViewModel @Inject constructor(
         _uiState.update { it.copy(note = parts.joinToString(", ")) }
     }
 
-    fun onLocationChange(location: ShoppingLocation) =
-        _uiState.update { it.copy(location = location, locationManuallySet = true) }
+    fun onLocationKeyChange(key: LocationKey) {
+        when (key) {
+            is LocationKey.BuiltIn -> _uiState.update { it.copy(
+                location = key.location,
+                customLocation = "",
+                locationManuallySet = true
+            )}
+            is LocationKey.Custom -> _uiState.update { it.copy(
+                customLocation = key.name,
+                locationManuallySet = true
+            )}
+        }
+    }
+
+    fun addCustomLocation(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank() || listId.isBlank()) return
+        viewModelScope.launch {
+            listRepository.addCustomLocation(listId, trimmed)
+        }
+    }
+
+    fun removeCustomLocation(name: String) {
+        if (listId.isBlank()) return
+        viewModelScope.launch {
+            listRepository.removeCustomLocation(listId, name)
+        }
+    }
+
+    fun onImagePicked(context: Context, uri: Uri) {
+        _uiState.update { it.copy(pendingImageUri = uri, isUploadingImage = true) }
+        viewModelScope.launch {
+            val url = imageUploader.uploadItemImage(context, listId, uri)
+            _uiState.update { it.copy(
+                imageUrl = url ?: it.imageUrl,
+                isUploadingImage = false,
+                pendingImageUri = if (url != null) null else it.pendingImageUri
+            )}
+        }
+    }
+
+    fun removeImage() {
+        _uiState.update { it.copy(imageUrl = "", pendingImageUri = null, isUploadingImage = false) }
+    }
 
     fun onTypeChange(type: ItemType) = _uiState.update { it.copy(type = type) }
     fun onPriorityChange(priority: ItemPriority) = _uiState.update { it.copy(priority = priority) }
@@ -156,12 +227,18 @@ class AddItemViewModel @Inject constructor(
 
     fun increaseQuantityOfDuplicate() {
         val duplicate = _uiState.value.duplicateItem ?: return
-        val newQty = if (duplicate.quantity.isBlank()) "2"
-                     else duplicate.quantity.trim().toIntOrNull()?.plus(1)?.toString() ?: "2"
+        val newQty = incrementQuantity(duplicate.quantity)
         viewModelScope.launch {
             itemRepository.updateItem(duplicate.copy(quantity = newQty))
             _uiState.update { it.copy(saved = true, duplicateItem = null) }
         }
+    }
+
+    private fun incrementQuantity(current: String): String {
+        if (current.isBlank()) return "2"
+        val match = Regex("^(\\d+)(.*)$").find(current.trim()) ?: return "2"
+        val num = match.groupValues[1].toIntOrNull() ?: return "2"
+        return "${num + 1}${match.groupValues[2]}"
     }
 
     fun dismissDuplicateDialog() = _uiState.update { it.copy(duplicateItem = null) }
@@ -174,18 +251,23 @@ class AddItemViewModel @Inject constructor(
             quantity = state.quantity.trim(),
             note = state.note.trim(),
             location = state.location,
+            customLocation = state.customLocation,
             type = state.type,
             priority = state.priority,
             addedBy = auth.currentUser?.uid ?: "",
             addedByName = displayName,
-            listId = listId
+            listId = listId,
+            imageUrl = state.imageUrl
         ))
-        itemRepository.saveHistory(
-            state.name.trim(),
-            state.location,
-            state.note.trim(),
-            state.quantity.trim()
-        )
+        // saveHistory רק לקטגוריה מובנית
+        if (state.customLocation.isBlank()) {
+            itemRepository.saveHistory(
+                state.name.trim(),
+                state.location,
+                state.note.trim(),
+                state.quantity.trim()
+            )
+        }
         _uiState.update { it.copy(saved = true, isSaving = false) }
     }
 }

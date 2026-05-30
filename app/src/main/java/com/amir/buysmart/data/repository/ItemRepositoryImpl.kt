@@ -27,9 +27,9 @@ class ItemRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getItemsByLocation(listId: String, location: ShoppingLocation): Flow<List<ShoppingItem>> {
+    override fun getItemsByCategoryKey(listId: String, categoryKey: String): Flow<List<ShoppingItem>> {
         return firestoreService.getItemsForList(listId).map { items ->
-            items.filter { it.location == location && !it.pendingRefill }
+            items.filter { it.categoryKey == categoryKey && !it.pendingRefill }
         }
     }
 
@@ -58,19 +58,21 @@ class ItemRepositoryImpl @Inject constructor(
     }
 
     override suspend fun saveHistory(name: String, location: ShoppingLocation, note: String, quantity: String) {
+        val key = name.trim().lowercase()
+        val existing = historyDao.getByName(key)
         historyDao.upsert(ItemHistoryEntity(
-            name = name.trim().lowercase(),
+            name = key,
             location = location.name,
-            note = note,
-            quantity = quantity
+            note = note.ifBlank { existing?.note ?: "" },
+            quantity = quantity.ifBlank { existing?.quantity ?: "" }
         ))
     }
 
     override suspend fun getHistory(name: String): ItemHistory? =
         historyDao.getByName(name.trim().lowercase())?.toDomain()
 
-    override suspend fun finishShopping(listId: String, location: ShoppingLocation) {
-        val boughtItems = firestoreService.getBoughtItemsByLocation(listId, location)
+    override suspend fun finishShopping(listId: String, categoryKey: String) {
+        val boughtItems = firestoreService.getBoughtItemsByCategoryKey(listId, categoryKey)
         boughtItems.forEach { item ->
             if (item.type == ItemType.ONE_TIME) {
                 firestoreService.deleteItem(item.id, listId)

@@ -3,20 +3,25 @@ package com.amir.buysmart.presentation.screens.shopping
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.amir.buysmart.domain.model.ItemPriority
+import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
-import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.presentation.components.LocationChipRow
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -37,7 +42,7 @@ fun ShoppingScreen(
                 title = { Text("🛒 יוצא לקניות") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "חזור")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "חזור")
                     }
                 }
             )
@@ -55,7 +60,7 @@ fun ShoppingScreen(
                     enabled = boughtCount > 0
                 ) {
                     Text(
-                        if (boughtCount > 0) "סיימתי ב${state.selectedLocation.displayName} ($boughtCount פריטים)"
+                        if (boughtCount > 0) "סיימתי ב${state.selectedKey.displayName} ($boughtCount פריטים)"
                         else "סמן פריטים שנקנו",
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -63,20 +68,21 @@ fun ShoppingScreen(
             }
         }
     ) { padding ->
-        Column(Modifier.padding(padding)) {
-            FlowRow(
+        Box(
+            Modifier.padding(padding).fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+        Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+            LocationChipRow(
+                selected = state.selectedKey,
+                customLocations = state.customLocations,
+                onSelect = viewModel::selectLocationKey,
+                onAddCustom = {},
+                onDeleteCustom = {},
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                ShoppingLocation.entries.forEach { location ->
-                    FilterChip(
-                        selected = state.selectedLocation == location,
-                        onClick = { viewModel.selectLocation(location) },
-                        label = { Text("${location.emoji} ${location.displayName}") }
-                    )
-                }
-            }
+                showAddButton = false,
+                showDeleteOnCustom = false
+            )
 
             HorizontalDivider()
 
@@ -90,7 +96,7 @@ fun ShoppingScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            "${state.selectedLocation.displayName}",
+                            state.selectedKey.displayName,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -115,7 +121,7 @@ fun ShoppingScreen(
                 }
                 state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("אין פריטים ב${state.selectedLocation.displayName}")
+                        Text("אין פריטים ב${state.selectedKey.displayName}")
                         Text("בחר מקום אחר", style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -133,13 +139,14 @@ fun ShoppingScreen(
                 }
             }
         }
+        }
     }
 
     if (showFinishDialog) {
         val boughtCount = state.items.count { it.isBought }
         AlertDialog(
             onDismissRequest = { showFinishDialog = false },
-            title = { Text("סיום קניות ב${state.selectedLocation.displayName}") },
+            title = { Text("סיום קניות ב${state.selectedKey.displayName}") },
             text = {
                 Text("נקנו $boughtCount פריטים — הם יאופסו לרשימה לקנייה הבאה.\nלסיים?")
             },
@@ -150,6 +157,23 @@ fun ShoppingScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showFinishDialog = false }) { Text("המשך קניות") }
+            }
+        )
+    }
+
+    // אחרי סיום קנייה בקטגוריה מותאמת — להציע מחיקה
+    state.justFinishedCustom?.let { name ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDeleteFinishedCustom,
+            title = { Text("למחוק את \"$name\"?") },
+            text = {
+                Text("סיימת לקנות ב-$name.\nאם זו הייתה קנייה חד-פעמית — אפשר למחוק את הקטגוריה.")
+            },
+            confirmButton = {
+                Button(onClick = viewModel::confirmDeleteFinishedCustom) { Text("מחק קטגוריה") }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissDeleteFinishedCustom) { Text("השאר") }
             }
         )
     }
@@ -176,7 +200,19 @@ private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
                 checked = item.isBought,
                 onCheckedChange = { onToggle() }
             )
-            Spacer(Modifier.width(8.dp))
+            if (item.imageUrl.isNotBlank()) {
+                AsyncImage(
+                    model = item.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .padding(end = 8.dp),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Spacer(Modifier.width(8.dp))
+            }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

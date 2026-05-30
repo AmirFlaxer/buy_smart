@@ -14,27 +14,31 @@ data class ShoppingItemEntity(
     val quantity: String = "",
     val note: String = "",
     val location: String,
+    val customLocation: String = "",
     val type: String,
     val isBought: Boolean,
     val addedBy: String,
     val addedByName: String = "",
     val listId: String,
     val priority: String = "NORMAL",
-    val pendingRefill: Boolean = false
+    val pendingRefill: Boolean = false,
+    val imageUrl: String = ""
 ) {
     fun toDomain() = ShoppingItem(
         id = id,
         name = name,
         quantity = quantity,
         note = note,
-        location = ShoppingLocation.valueOf(location),
+        location = try { ShoppingLocation.valueOf(location) } catch (e: Exception) { ShoppingLocation.OTHER },
+        customLocation = customLocation,
         type = ItemType.valueOf(type),
         isBought = isBought,
         addedBy = addedBy,
         addedByName = addedByName,
         listId = listId,
         priority = try { ItemPriority.valueOf(priority) } catch (e: Exception) { ItemPriority.NORMAL },
-        pendingRefill = pendingRefill
+        pendingRefill = pendingRefill,
+        imageUrl = imageUrl
     )
 
     companion object {
@@ -44,13 +48,15 @@ data class ShoppingItemEntity(
             quantity = item.quantity,
             note = item.note,
             location = item.location.name,
+            customLocation = item.customLocation,
             type = item.type.name,
             isBought = item.isBought,
             addedBy = item.addedBy,
             addedByName = item.addedByName,
             listId = item.listId,
             priority = item.priority.name,
-            pendingRefill = item.pendingRefill
+            pendingRefill = item.pendingRefill,
+            imageUrl = item.imageUrl
         )
     }
 }

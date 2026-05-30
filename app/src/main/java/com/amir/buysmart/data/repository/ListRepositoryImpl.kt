@@ -27,10 +27,23 @@ class ListRepositoryImpl @Inject constructor(
     override suspend fun joinListByCode(inviteCode: String, userId: String): ShoppingList? =
         firestoreService.joinListByCode(inviteCode, userId)
 
+    override suspend fun leaveList(userId: String, listId: String) {
+        firestoreService.leaveList(listId, userId)
+        dataStore.edit { it.remove(activeListKey) }
+    }
+
     override suspend fun getActiveListId(userId: String): String? =
         dataStore.data.first()[activeListKey]
 
     override suspend fun setActiveList(userId: String, listId: String) {
         dataStore.edit { it[activeListKey] = listId }
+    }
+
+    override suspend fun addCustomLocation(listId: String, name: String) {
+        firestoreService.addCustomLocation(listId, name)
+    }
+
+    override suspend fun removeCustomLocation(listId: String, name: String) {
+        firestoreService.removeCustomLocation(listId, name)
     }
 }

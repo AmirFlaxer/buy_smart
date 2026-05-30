@@ -3,6 +3,7 @@ package com.amir.buysmart.presentation.screens.home
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,9 +11,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.amir.buysmart.presentation.components.ImagePickerButton
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -30,8 +37,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.presentation.components.AddCustomLocationDialog
+import com.amir.buysmart.presentation.components.LocationChipRow
 import com.amir.buysmart.presentation.components.LocationSection
 import com.amir.buysmart.presentation.components.VoiceInputButton
 
@@ -46,6 +56,25 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var backPressedOnce by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var overflowExpanded by remember { mutableStateOf(false) }
+    var showLeaveDialog by remember { mutableStateOf(false) }
+    var showAddCustomLocationDialog by remember { mutableStateOf(false) }
+    var showAddCustomFromEditDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.recentlyDeleted) {
+        val deleted = state.recentlyDeleted ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "${deleted.name} נמחק",
+            actionLabel = "בטל",
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undoDelete()
+        } else {
+            viewModel.clearRecentlyDeleted()
+        }
+    }
 
     LaunchedEffect(inviteCodeFromLink) {
         if (!inviteCodeFromLink.isNullOrBlank()) {
@@ -66,6 +95,7 @@ fun HomeScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { AppBarTitle() },
@@ -95,6 +125,22 @@ fun HomeScreen(
                                 Icon(Icons.Default.Share, "שתף רשימה")
                             }
                         }
+                        IconButton(onClick = { overflowExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, "עוד")
+                        }
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("עזוב רשימה") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, null) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    showLeaveDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -107,7 +153,10 @@ fun HomeScreen(
             }
         }
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        Box(
+            Modifier.padding(padding).fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
             when {
                 state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
@@ -122,24 +171,27 @@ fun HomeScreen(
 
                 state.activeList == null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
 
-                else -> Column(Modifier.fillMaxSize()) {
+                else -> Column(Modifier.fillMaxSize().widthIn(max = 720.dp)) {
                     QuickAddBar(
                         name = state.quickAddName,
                         note = state.quickAddNote,
-                        location = state.quickAddLocation,
+                        selectedKey = state.quickAddSelectedKey,
+                        customLocations = state.customLocations,
                         priority = state.quickAddPriority,
                         suggestions = state.quickAddSuggestions,
                         presetNotes = state.quickAddPresetNotes,
                         onNameChange = viewModel::onQuickAddNameChange,
-                        onLocationChange = viewModel::onQuickAddLocationChange,
+                        onLocationKeyChange = viewModel::onQuickAddLocationKeyChange,
                         onPriorityChange = viewModel::onQuickAddPriorityChange,
                         onSuggestionSelected = viewModel::onQuickAddSuggestionSelected,
                         onPresetNoteToggle = viewModel::onQuickAddPresetNoteToggle,
-                        onAdd = viewModel::quickAdd
+                        onAdd = viewModel::quickAdd,
+                        onAddCustomLocation = { showAddCustomLocationDialog = true },
+                        onDeleteCustomLocation = viewModel::removeCustomLocation
                     )
                     HorizontalDivider()
 
-                    if (state.pendingRefillItems.isEmpty() && state.itemsByLocation.isEmpty()) {
+                    if (state.pendingRefillItems.isEmpty() && state.itemsByCategory.isEmpty()) {
                         EmptyItemsView()
                     } else {
                         LazyColumn(
@@ -158,11 +210,11 @@ fun HomeScreen(
                                 }
                             }
 
-                            items(state.itemsByLocation.entries.toList()) { (location, items) ->
+                            items(state.itemsByCategory.entries.toList()) { (key, items) ->
                                 LocationSection(
-                                    location = location,
+                                    key = key,
                                     items = items,
-                                    onDeleteItem = viewModel::deleteItem,
+                                    onDeleteItem = viewModel::deleteItemWithUndo,
                                     onEditItem = viewModel::startEditItem
                                 )
                             }
@@ -196,20 +248,69 @@ fun HomeScreen(
         )
     }
 
+    // דיאלוג עזיבת רשימה
+    if (showLeaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveDialog = false },
+            title = { Text("עזוב רשימה") },
+            text = { Text("האם לעזוב את הרשימה?\nהפריטים יישארו לחברים האחרים, אך לא יהיו זמינים לך יותר.") },
+            confirmButton = {
+                Button(onClick = {
+                    showLeaveDialog = false
+                    viewModel.leaveList()
+                }) { Text("עזוב") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveDialog = false }) { Text("ביטול") }
+            }
+        )
+    }
+
     // BottomSheet לעריכת פריט
     state.editingItem?.let { item ->
         EditItemBottomSheet(
             item = item,
+            customLocations = state.customLocations,
             presetNotes = state.editPresetNotes,
+            pendingImageUri = state.editPendingImageUri,
+            isUploadingImage = state.editIsUploadingImage,
             onNameChange = viewModel::onEditNameChange,
             onQuantityChange = viewModel::onEditQuantityChange,
             onNoteChange = viewModel::onEditNoteChange,
             onPresetToggle = viewModel::onEditNotePresetToggle,
-            onLocationChange = viewModel::onEditLocationChange,
+            onLocationKeyChange = viewModel::onEditLocationKeyChange,
             onTypeChange = viewModel::onEditTypeChange,
             onPriorityChange = viewModel::onEditPriorityChange,
+            onImagePicked = { uri -> viewModel.onEditImagePicked(context, uri) },
+            onImageRemoved = viewModel::onEditImageRemoved,
             onSave = viewModel::saveEdit,
-            onDismiss = viewModel::dismissEdit
+            onDismiss = viewModel::dismissEdit,
+            onAddCustomLocation = { showAddCustomFromEditDialog = true },
+            onDeleteCustomLocation = viewModel::removeCustomLocation
+        )
+    }
+
+    // דיאלוג הוספת קטגוריה מותאמת (מ-QuickAdd)
+    if (showAddCustomLocationDialog) {
+        AddCustomLocationDialog(
+            onDismiss = { showAddCustomLocationDialog = false },
+            onConfirm = { name ->
+                viewModel.addCustomLocation(name)
+                viewModel.onQuickAddLocationKeyChange(LocationKey.Custom(name))
+                showAddCustomLocationDialog = false
+            }
+        )
+    }
+
+    // דיאלוג הוספת קטגוריה מותאמת (מ-Edit Bottom Sheet)
+    if (showAddCustomFromEditDialog) {
+        AddCustomLocationDialog(
+            onDismiss = { showAddCustomFromEditDialog = false },
+            onConfirm = { name ->
+                viewModel.addCustomLocation(name)
+                viewModel.onEditLocationKeyChange(LocationKey.Custom(name))
+                showAddCustomFromEditDialog = false
+            }
         )
     }
 }
@@ -285,16 +386,23 @@ private fun PendingRefillSection(
 @Composable
 private fun EditItemBottomSheet(
     item: ShoppingItem,
+    customLocations: List<String>,
     presetNotes: List<String>,
+    pendingImageUri: Uri?,
+    isUploadingImage: Boolean,
     onNameChange: (String) -> Unit,
     onQuantityChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
     onPresetToggle: (String) -> Unit,
-    onLocationChange: (ShoppingLocation) -> Unit,
+    onLocationKeyChange: (LocationKey) -> Unit,
     onTypeChange: (ItemType) -> Unit,
     onPriorityChange: (ItemPriority) -> Unit,
+    onImagePicked: (Uri) -> Unit,
+    onImageRemoved: () -> Unit,
     onSave: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAddCustomLocation: () -> Unit,
+    onDeleteCustomLocation: (String) -> Unit
 ) {
     val selectedNotes = item.note.split(", ").map { it.trim() }.filter { it.isNotBlank() }.toSet()
     val freeText = selectedNotes.filter { it !in presetNotes }.joinToString(", ")
@@ -370,18 +478,16 @@ private fun EditItemBottomSheet(
 
             // מקום קנייה
             Text("מקום קנייה", style = MaterialTheme.typography.titleSmall)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                ShoppingLocation.entries.forEach { loc ->
-                    FilterChip(
-                        selected = item.location == loc,
-                        onClick = { onLocationChange(loc) },
-                        label = { Text("${loc.emoji} ${loc.displayName}") }
-                    )
-                }
-            }
+            val currentKey = if (item.customLocation.isNotBlank())
+                LocationKey.Custom(item.customLocation)
+                else LocationKey.BuiltIn(item.location)
+            LocationChipRow(
+                selected = currentKey,
+                customLocations = customLocations,
+                onSelect = onLocationKeyChange,
+                onAddCustom = onAddCustomLocation,
+                onDeleteCustom = onDeleteCustomLocation
+            )
 
             // דחיפות
             Text("דחיפות", style = MaterialTheme.typography.titleSmall)
@@ -407,12 +513,48 @@ private fun EditItemBottomSheet(
                 }
             }
 
+            // תמונה
+            Text("תמונה (אופציונלי)", style = MaterialTheme.typography.titleSmall)
+            val displayed: Any? = pendingImageUri ?: item.imageUrl.takeIf { it.isNotBlank() }
+            if (displayed != null) {
+                Box(Modifier.fillMaxWidth()) {
+                    AsyncImage(
+                        model = displayed,
+                        contentDescription = "תמונת המוצר",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (isUploadingImage) {
+                        Box(
+                            Modifier.fillMaxWidth().height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    IconButton(
+                        onClick = onImageRemoved,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                    ) {
+                        Icon(Icons.Default.Close, "הסר תמונה", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            } else {
+                ImagePickerButton(
+                    onImagePicked = onImagePicked,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("ביטול") }
                 Button(
                     onClick = onSave,
                     modifier = Modifier.weight(1f),
-                    enabled = item.name.isNotBlank()
+                    enabled = item.name.isNotBlank() && !isUploadingImage
                 ) { Text("שמור") }
             }
         }
@@ -424,16 +566,19 @@ private fun EditItemBottomSheet(
 private fun QuickAddBar(
     name: String,
     note: String,
-    location: ShoppingLocation,
+    selectedKey: LocationKey,
+    customLocations: List<String>,
     priority: ItemPriority,
     suggestions: List<String>,
     presetNotes: List<String>,
     onNameChange: (String) -> Unit,
-    onLocationChange: (ShoppingLocation) -> Unit,
+    onLocationKeyChange: (LocationKey) -> Unit,
     onPriorityChange: (ItemPriority) -> Unit,
     onSuggestionSelected: (String) -> Unit,
     onPresetNoteToggle: (String) -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    onAddCustomLocation: () -> Unit,
+    onDeleteCustomLocation: (String) -> Unit
 ) {
     var dropdownExpanded by remember { mutableStateOf(false) }
     val selectedNoteParts = note.split(", ").map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -452,7 +597,7 @@ private fun QuickAddBar(
                     value = name,
                     onValueChange = { onNameChange(it); dropdownExpanded = true },
                     placeholder = { Text("הוסף פריט...") },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable, enabled = true),
                     singleLine = true,
                     supportingText = if (note.isNotBlank()) {{ Text(note, maxLines = 1) }} else null
                 )
@@ -481,19 +626,14 @@ private fun QuickAddBar(
             }
         }
         Spacer(Modifier.height(6.dp))
-        // קטגוריה
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            ShoppingLocation.entries.forEach { loc ->
-                FilterChip(
-                    selected = location == loc,
-                    onClick = { onLocationChange(loc) },
-                    label = { Text("${loc.emoji} ${loc.displayName}") }
-                )
-            }
-        }
+        // קטגוריה — מובנות + מותאמות + "+"
+        LocationChipRow(
+            selected = selectedKey,
+            customLocations = customLocations,
+            onSelect = onLocationKeyChange,
+            onAddCustom = onAddCustomLocation,
+            onDeleteCustom = onDeleteCustomLocation
+        )
         // דחיפות
         Spacer(Modifier.height(4.dp))
         FlowRow(

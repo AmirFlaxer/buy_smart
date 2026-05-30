@@ -5,23 +5,28 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.amir.buysmart.domain.model.ItemPriority
+import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
-import com.amir.buysmart.domain.model.ShoppingLocation
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationSection(
-    location: ShoppingLocation,
+    key: LocationKey,
     items: List<ShoppingItem>,
-    onDeleteItem: (String) -> Unit,
+    onDeleteItem: (ShoppingItem) -> Unit,
     onEditItem: (ShoppingItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -33,7 +38,7 @@ fun LocationSection(
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
-                    "${location.emoji} ${location.displayName}",
+                    "${key.emoji} ${key.displayName}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -45,14 +50,59 @@ fun LocationSection(
             }
             Spacer(Modifier.height(8.dp))
             items.forEach { item ->
-                ItemRow(
+                SwipeableItemRow(
                     item = item,
-                    onDelete = { onDeleteItem(item.id) },
+                    onDelete = { onDeleteItem(item) },
                     onEdit = { onEditItem(item) },
                     modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableItemRow(
+    item: ShoppingItem,
+    onDelete: () -> Unit,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart || value == SwipeToDismissBoxValue.StartToEnd) {
+                onDelete()
+                true
+            } else false
+        },
+        positionalThreshold = { distance -> distance * 0.5f }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = modifier,
+        backgroundContent = {
+            val align = when (dismissState.dismissDirection) {
+                SwipeToDismissBoxValue.EndToStart -> Alignment.CenterStart
+                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterEnd
+                else -> Alignment.Center
+            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFD32F2F), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 16.dp),
+                contentAlignment = align
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = Color.White
+                )
+            }
+        }
+    ) {
+        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit)
     }
 }
 
@@ -66,14 +116,25 @@ fun ItemRow(
     val bgColor = when (item.priority) {
         ItemPriority.URGENT -> Color(0xFFFFCDD2)
         ItemPriority.NOT_URGENT -> Color(0xFFFFF9C4)
-        else -> Color.Transparent
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
     Row(
         modifier
             .fillMaxWidth()
             .background(bgColor, RoundedCornerShape(6.dp)),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        if (item.imageUrl.isNotBlank()) {
+            AsyncImage(
+                model = item.imageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .padding(end = 6.dp),
+                contentScale = ContentScale.Crop
+            )
+        }
         Column(Modifier.weight(1f).padding(top = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

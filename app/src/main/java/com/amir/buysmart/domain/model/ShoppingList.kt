@@ -5,5 +5,6 @@ data class ShoppingList(
     val name: String = "",
     val ownerId: String = "",
     val members: List<String> = emptyList(),
-    val inviteCode: String = ""
+    val inviteCode: String = "",
+    val customLocations: List<String> = emptyList()
 )

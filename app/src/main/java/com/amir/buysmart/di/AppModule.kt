@@ -10,6 +10,7 @@ import com.amir.buysmart.data.local.ItemDao
 import com.amir.buysmart.data.local.ItemHistoryDao
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -30,9 +31,18 @@ object AppModule {
     fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Provides @Singleton
+    fun provideFirebaseStorage(): FirebaseStorage = FirebaseStorage.getInstance()
+
+    @Provides @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "buy_smart.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
             .build()
 
     @Provides

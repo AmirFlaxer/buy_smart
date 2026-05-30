@@ -89,8 +89,11 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.storage)
     implementation(libs.google.play.services.auth)
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    implementation(libs.coil.compose)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)

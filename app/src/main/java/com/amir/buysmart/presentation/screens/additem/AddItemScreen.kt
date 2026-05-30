@@ -8,15 +8,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
-import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.domain.model.LocationKey
+import com.amir.buysmart.presentation.components.AddCustomLocationDialog
+import com.amir.buysmart.presentation.components.ImagePickerButton
+import com.amir.buysmart.presentation.components.LocationChipRow
 import com.amir.buysmart.presentation.components.VoiceInputButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -27,9 +36,22 @@ fun AddItemScreen(
     viewModel: AddItemViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    var showAddCustomDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(listId) { viewModel.setListId(listId) }
     LaunchedEffect(state.saved) { if (state.saved) onBack() }
+
+    if (showAddCustomDialog) {
+        AddCustomLocationDialog(
+            onDismiss = { showAddCustomDialog = false },
+            onConfirm = { name ->
+                viewModel.addCustomLocation(name)
+                viewModel.onLocationKeyChange(LocationKey.Custom(name))
+                showAddCustomDialog = false
+            }
+        )
+    }
 
     // דיאלוג כפילות
     state.duplicateItem?.let { existing ->
@@ -57,16 +79,20 @@ fun AddItemScreen(
             TopAppBar(
                 title = { Text("הוסף פריט") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "חזור") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "חזור") }
                 }
             )
         },
         contentWindowInsets = WindowInsets(0)
     ) { padding ->
+        Box(
+            Modifier.fillMaxSize().padding(padding),
+            contentAlignment = Alignment.TopCenter
+        ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .widthIn(max = 720.dp)
                 .verticalScroll(rememberScrollState())
                 .imePadding()
                 .padding(16.dp),
@@ -88,7 +114,7 @@ fun AddItemScreen(
                         value = state.name,
                         onValueChange = { viewModel.onNameChange(it); dropdownExpanded = true },
                         label = { Text("שם המוצר") },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryEditable, enabled = true),
                         singleLine = true
                     )
                     ExposedDropdownMenu(
@@ -158,18 +184,13 @@ fun AddItemScreen(
 
             // מקום קנייה
             Text("מקום קנייה", style = MaterialTheme.typography.titleMedium)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ShoppingLocation.entries.forEach { location ->
-                    FilterChip(
-                        selected = state.location == location,
-                        onClick = { viewModel.onLocationChange(location) },
-                        label = { Text("${location.emoji} ${location.displayName}") }
-                    )
-                }
-            }
+            LocationChipRow(
+                selected = state.selectedKey,
+                customLocations = state.customLocations,
+                onSelect = viewModel::onLocationKeyChange,
+                onAddCustom = { showAddCustomDialog = true },
+                onDeleteCustom = viewModel::removeCustomLocation
+            )
 
             // דחיפות
             Text("דחיפות", style = MaterialTheme.typography.titleMedium)
@@ -195,16 +216,57 @@ fun AddItemScreen(
                 }
             }
 
+            // תמונה
+            Text("תמונת המוצר (אופציונלי)", style = MaterialTheme.typography.titleMedium)
+            val displayedUri = state.pendingImageUri?.toString() ?: state.imageUrl
+            if (displayedUri.isNotBlank()) {
+                Box(Modifier.fillMaxWidth()) {
+                    AsyncImage(
+                        model = displayedUri,
+                        contentDescription = "תמונת המוצר",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    if (state.isUploadingImage) {
+                        Box(
+                            Modifier.fillMaxWidth().height(180.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    IconButton(
+                        onClick = viewModel::removeImage,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "הסר תמונה",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            } else {
+                ImagePickerButton(
+                    onImagePicked = { uri -> viewModel.onImagePicked(context, uri) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
 
             Button(
                 onClick = { viewModel.save(listId) },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                enabled = state.name.isNotBlank() && !state.isSaving
+                enabled = state.name.isNotBlank() && !state.isSaving && !state.isUploadingImage
             ) {
                 if (state.isSaving) CircularProgressIndicator(Modifier.size(20.dp))
                 else Text("הוסף לרשימה", style = MaterialTheme.typography.titleMedium)
             }
+        }
         }
     }
 }
