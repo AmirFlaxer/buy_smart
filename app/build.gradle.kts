@@ -23,8 +23,8 @@ android {
         applicationId = "com.amir.buysmart"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
     }
 
@@ -89,9 +89,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
-    implementation(libs.firebase.storage)
     implementation(libs.google.play.services.auth)
-    implementation("com.google.firebase:firebase-messaging-ktx")
 
     implementation(libs.coil.compose)
 
@@ -99,4 +97,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+
+    testImplementation(libs.junit)
 }

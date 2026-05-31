@@ -15,6 +15,8 @@ import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.repository.ListRepository
+import com.amir.buysmart.notification.ItemNotificationHelper
+import com.amir.buysmart.domain.util.QuantityUtils
 import com.amir.buysmart.domain.usecase.AddItemUseCase
 import com.amir.buysmart.domain.usecase.DeleteItemUseCase
 import com.google.firebase.auth.FirebaseAuth
@@ -49,7 +51,9 @@ data class HomeUiState(
     val editPendingImageUri: Uri? = null,
     val editIsUploadingImage: Boolean = false,
     // מחיקה אחרונה — לטובת undo
-    val recentlyDeleted: ShoppingItem? = null
+    val recentlyDeleted: ShoppingItem? = null,
+    // הודעת שגיאה חד-פעמית להצגה ב-Snackbar
+    val errorMessage: String? = null
 ) {
     val quickAddSelectedKey: LocationKey
         get() = if (quickAddCustomLocation.isNotBlank()) LocationKey.Custom(quickAddCustomLocation)
@@ -67,7 +71,8 @@ class HomeViewModel @Inject constructor(
     private val deleteItemUseCase: DeleteItemUseCase,
     private val imageUploader: ImageUploader,
     private val auth: FirebaseAuth,
-    private val geminiClassifier: GeminiLocationClassifier
+    private val geminiClassifier: GeminiLocationClassifier,
+    private val notificationHelper: ItemNotificationHelper
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -80,6 +85,8 @@ class HomeViewModel @Inject constructor(
     private var itemsJob: Job? = null
     private var autoCreateAttempted = false
     private var locationJob: Job? = null
+    // מזהי הפריטים הידועים — לזיהוי פריטים חדשים לצורך התראה. null = טרם נטען
+    private var knownItemIds: Set<String>? = null
 
     init { loadActiveList() }
 
@@ -116,15 +123,17 @@ class HomeViewModel @Inject constructor(
                 _uiState.update { it.copy(activeList = list, isCreatingList = false) }
                 observeItems(list.id)
             } catch (e: Exception) {
-                _uiState.update { it.copy(isCreatingList = false) }
+                _uiState.update { it.copy(isCreatingList = false, errorMessage = "יצירת הרשימה נכשלה, נסה שוב") }
             }
         }
     }
 
     private fun observeItems(listId: String) {
         itemsJob?.cancel()
+        knownItemIds = null
         itemsJob = viewModelScope.launch {
             itemRepository.getItemsForList(listId).collect { items ->
+                notifyNewItems(items)
                 val activeItems = items.filter { !it.pendingRefill }
                 val grouped: Map<LocationKey, List<ShoppingItem>> = activeItems
                     .groupBy { LocationKey.fromItem(it) }
@@ -139,6 +148,23 @@ class HomeViewModel @Inject constructor(
                 )}
             }
         }
+    }
+
+    /** מציג התראה מקומית על פריטים שנוספו ע"י משתמש אחר מאז הסנכרון הקודם. */
+    private fun notifyNewItems(items: List<ShoppingItem>) {
+        val currentIds = items.map { it.id }.toSet()
+        val known = knownItemIds
+        if (known != null) {
+            items.filter { it.id !in known && it.addedBy.isNotBlank() && it.addedBy != userId }
+                .forEach { item ->
+                    notificationHelper.showItemAdded(
+                        title = _uiState.value.activeList?.name ?: "רשימת קניות",
+                        body = "${item.addedByName.ifBlank { "מישהו" }} הוסיף: ${item.name}",
+                        dedupeId = item.id.hashCode()
+                    )
+                }
+        }
+        knownItemIds = currentIds
     }
 
     // ──── QuickAdd ────
@@ -251,34 +277,38 @@ class HomeViewModel @Inject constructor(
 
     private fun doQuickAdd(listId: String, state: HomeUiState) {
         viewModelScope.launch {
-            addItemUseCase(ShoppingItem(
-                name = state.quickAddName.trim(),
-                note = state.quickAddNote.trim(),
-                location = state.quickAddLocation,
-                customLocation = state.quickAddCustomLocation,
-                type = ItemType.RECURRING,
-                priority = state.quickAddPriority,
-                addedBy = userId,
-                addedByName = displayName,
-                listId = listId
-            ))
-            // saveHistory רק לקטגוריה מובנית — היסטוריה אינה מתאימה למותאמות אישית
-            if (state.quickAddCustomLocation.isBlank()) {
-                itemRepository.saveHistory(
-                    state.quickAddName.trim(),
-                    state.quickAddLocation,
-                    state.quickAddNote.trim(),
-                    ""
-                )
+            try {
+                addItemUseCase(ShoppingItem(
+                    name = state.quickAddName.trim(),
+                    note = state.quickAddNote.trim(),
+                    location = state.quickAddLocation,
+                    customLocation = state.quickAddCustomLocation,
+                    type = ItemType.RECURRING,
+                    priority = state.quickAddPriority,
+                    addedBy = userId,
+                    addedByName = displayName,
+                    listId = listId
+                ))
+                // saveHistory רק לקטגוריה מובנית — היסטוריה אינה מתאימה למותאמות אישית
+                if (state.quickAddCustomLocation.isBlank()) {
+                    itemRepository.saveHistory(
+                        state.quickAddName.trim(),
+                        state.quickAddLocation,
+                        state.quickAddNote.trim(),
+                        ""
+                    )
+                }
+                resetQuickAdd()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "הוספת הפריט נכשלה, נסה שוב") }
             }
-            resetQuickAdd()
         }
     }
 
     fun increaseQuantityFromDuplicate() {
         val state = _uiState.value
         val duplicate = state.quickAddDuplicate ?: return
-        val newQty = incrementQuantity(duplicate.quantity)
+        val newQty = QuantityUtils.increment(duplicate.quantity)
         viewModelScope.launch {
             itemRepository.updateItem(duplicate.copy(quantity = newQty))
             resetQuickAdd()
@@ -306,14 +336,6 @@ class HomeViewModel @Inject constructor(
             quickAddPresetNotes = emptyList(),
             quickAddDuplicate = null
         )}
-    }
-
-    private fun incrementQuantity(current: String): String {
-        if (current.isBlank()) return "2"
-        val trimmed = current.trim()
-        val match = Regex("^(\\d+)(.*)$").find(trimmed) ?: return "2"
-        val num = match.groupValues[1].toIntOrNull() ?: return "2"
-        return "${num + 1}${match.groupValues[2]}"
     }
 
     // ──── הצטרפות / עזיבה ────
@@ -380,11 +402,15 @@ class HomeViewModel @Inject constructor(
         val item = _uiState.value.recentlyDeleted ?: return
         _uiState.update { it.copy(recentlyDeleted = null) }
         viewModelScope.launch {
+            // התמונה לא נמחקה מ-Storage בזמן חלון ה-undo, כך שה-imageUrl עדיין תקף
             addItemUseCase(item.copy(id = ""))
         }
     }
 
+    // התמונה מאוחסנת בתוך מסמך הפריט (base64), ולכן נמחקת יחד איתו — אין צורך בניקוי נפרד.
     fun clearRecentlyDeleted() = _uiState.update { it.copy(recentlyDeleted = null) }
+
+    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 
     // ──── עריכת פריט ────
 
@@ -427,15 +453,16 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(editingItem = it.editingItem?.copy(priority = priority)) }
 
     fun onEditImagePicked(context: Context, uri: Uri) {
-        val listId = _uiState.value.activeList?.id ?: return
         _uiState.update { it.copy(editPendingImageUri = uri, editIsUploadingImage = true) }
         viewModelScope.launch {
-            val url = imageUploader.uploadItemImage(context, listId, uri)
+            // התמונה מקודדת ל-base64 ונשמרת ישירות במסמך הפריט ב-Firestore
+            val encoded = imageUploader.encodeItemImage(context, uri)
             _uiState.update { state ->
                 state.copy(
-                    editingItem = if (url != null) state.editingItem?.copy(imageUrl = url) else state.editingItem,
-                    editPendingImageUri = if (url != null) null else state.editPendingImageUri,
-                    editIsUploadingImage = false
+                    editingItem = if (encoded != null) state.editingItem?.copy(imageUrl = encoded) else state.editingItem,
+                    editPendingImageUri = if (encoded != null) null else state.editPendingImageUri,
+                    editIsUploadingImage = false,
+                    errorMessage = if (encoded == null) "עיבוד התמונה נכשל, נסה שוב" else state.errorMessage
                 )
             }
         }

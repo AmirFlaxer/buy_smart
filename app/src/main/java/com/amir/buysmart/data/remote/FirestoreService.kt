@@ -1,10 +1,13 @@
 package com.amir.buysmart.data.remote
 
+import android.util.Log
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.model.ShoppingLocation
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -22,30 +25,67 @@ class FirestoreService @Inject constructor(
 
     private fun listsCollection() = firestore.collection("lists")
 
+    /** ממיר מסמך Firestore ל-ShoppingItem. מחזיר null אם המיפוי נכשל. */
+    private fun DocumentSnapshot.toShoppingItem(listId: String): ShoppingItem? {
+        return try {
+            ShoppingItem(
+                id = id,
+                name = getString("name") ?: "",
+                quantity = getString("quantity") ?: "",
+                note = getString("note") ?: "",
+                location = try {
+                    ShoppingLocation.valueOf(getString("location") ?: "SUPERMARKET")
+                } catch (e: Exception) {
+                    ShoppingLocation.OTHER
+                },
+                customLocation = getString("customLocation") ?: "",
+                type = try {
+                    ItemType.valueOf(getString("type") ?: "ONE_TIME")
+                } catch (e: Exception) {
+                    ItemType.ONE_TIME
+                },
+                isBought = getBoolean("isBought") ?: false,
+                addedBy = getString("addedBy") ?: "",
+                addedByName = getString("addedByName") ?: "",
+                listId = listId,
+                priority = try {
+                    ItemPriority.valueOf(getString("priority") ?: "NORMAL")
+                } catch (e: Exception) {
+                    ItemPriority.NORMAL
+                },
+                pendingRefill = getBoolean("pendingRefill") ?: false,
+                imageUrl = getString("imageUrl") ?: ""
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "כשל במיפוי פריט ${id}", e)
+            null
+        }
+    }
+
+    private fun DocumentSnapshot.toShoppingList(): ShoppingList? {
+        return try {
+            ShoppingList(
+                id = id,
+                name = getString("name") ?: "",
+                ownerId = getString("ownerId") ?: "",
+                members = (get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                inviteCode = getString("inviteCode") ?: "",
+                customLocations = (get("customLocations") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "כשל במיפוי רשימה ${id}", e)
+            null
+        }
+    }
+
     fun getItemsForList(listId: String): Flow<List<ShoppingItem>> = callbackFlow {
         val listener = itemsCollection(listId)
             .addSnapshotListener { snapshot, error ->
-                if (error != null) { close(error); return@addSnapshotListener }
-                val items = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        ShoppingItem(
-                            id = doc.id,
-                            name = doc.getString("name") ?: "",
-                            quantity = doc.getString("quantity") ?: "",
-                            note = doc.getString("note") ?: "",
-                            location = try { ShoppingLocation.valueOf(doc.getString("location") ?: "SUPERMARKET") } catch (e: Exception) { ShoppingLocation.OTHER },
-                            customLocation = doc.getString("customLocation") ?: "",
-                            type = ItemType.valueOf(doc.getString("type") ?: "ONE_TIME"),
-                            isBought = doc.getBoolean("isBought") ?: false,
-                            addedBy = doc.getString("addedBy") ?: "",
-                            addedByName = doc.getString("addedByName") ?: "",
-                            listId = listId,
-                            priority = try { ItemPriority.valueOf(doc.getString("priority") ?: "NORMAL") } catch (e: Exception) { ItemPriority.NORMAL },
-                            pendingRefill = doc.getBoolean("pendingRefill") ?: false,
-                            imageUrl = doc.getString("imageUrl") ?: ""
-                        )
-                    } catch (e: Exception) { null }
-                } ?: emptyList()
+                if (error != null) {
+                    Log.w(TAG, "getItemsForList נכשל עבור $listId", error)
+                    close(error); return@addSnapshotListener
+                }
+                val items = snapshot?.documents?.mapNotNull { it.toShoppingItem(listId) } ?: emptyList()
                 trySend(items)
             }
         awaitClose { listener.remove() }
@@ -114,45 +154,18 @@ class FirestoreService @Inject constructor(
                 .whereEqualTo("customLocation", "")
                 .whereEqualTo("isBought", true)
         }
-        return query.get().await().documents.mapNotNull { doc ->
-            try {
-                ShoppingItem(
-                    id = doc.id,
-                    name = doc.getString("name") ?: "",
-                    quantity = doc.getString("quantity") ?: "",
-                    note = doc.getString("note") ?: "",
-                    location = try { ShoppingLocation.valueOf(doc.getString("location") ?: "OTHER") } catch (e: Exception) { ShoppingLocation.OTHER },
-                    customLocation = doc.getString("customLocation") ?: "",
-                    type = ItemType.valueOf(doc.getString("type") ?: "ONE_TIME"),
-                    isBought = true,
-                    addedBy = doc.getString("addedBy") ?: "",
-                    addedByName = doc.getString("addedByName") ?: "",
-                    listId = listId,
-                    priority = try { ItemPriority.valueOf(doc.getString("priority") ?: "NORMAL") } catch (e: Exception) { ItemPriority.NORMAL },
-                    pendingRefill = doc.getBoolean("pendingRefill") ?: false,
-                    imageUrl = doc.getString("imageUrl") ?: ""
-                )
-            } catch (e: Exception) { null }
-        }
+        return query.get().await().documents.mapNotNull { it.toShoppingItem(listId) }
     }
 
     fun getUserLists(userId: String): Flow<List<ShoppingList>> = callbackFlow {
         val listener = listsCollection()
             .whereArrayContains("members", userId)
             .addSnapshotListener { snapshot, error ->
-                if (error != null) { close(error); return@addSnapshotListener }
-                val lists = snapshot?.documents?.mapNotNull { doc ->
-                    try {
-                        ShoppingList(
-                            id = doc.id,
-                            name = doc.getString("name") ?: "",
-                            ownerId = doc.getString("ownerId") ?: "",
-                            members = (doc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
-                            inviteCode = doc.getString("inviteCode") ?: "",
-                            customLocations = (doc.get("customLocations") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-                        )
-                    } catch (e: Exception) { null }
-                } ?: emptyList()
+                if (error != null) {
+                    Log.w(TAG, "getUserLists נכשל עבור $userId", error)
+                    close(error); return@addSnapshotListener
+                }
+                val lists = snapshot?.documents?.mapNotNull { it.toShoppingList() } ?: emptyList()
                 trySend(lists)
             }
         awaitClose { listener.remove() }
@@ -172,19 +185,19 @@ class FirestoreService @Inject constructor(
 
     suspend fun addCustomLocation(listId: String, name: String) {
         listsCollection().document(listId)
-            .update("customLocations", com.google.firebase.firestore.FieldValue.arrayUnion(name))
+            .update("customLocations", FieldValue.arrayUnion(name))
             .await()
     }
 
     suspend fun removeCustomLocation(listId: String, name: String) {
         listsCollection().document(listId)
-            .update("customLocations", com.google.firebase.firestore.FieldValue.arrayRemove(name))
+            .update("customLocations", FieldValue.arrayRemove(name))
             .await()
     }
 
     suspend fun leaveList(listId: String, userId: String) {
         listsCollection().document(listId)
-            .update("members", com.google.firebase.firestore.FieldValue.arrayRemove(userId))
+            .update("members", FieldValue.arrayRemove(userId))
             .await()
     }
 
@@ -195,21 +208,14 @@ class FirestoreService @Inject constructor(
             .await()
         val doc = query.documents.firstOrNull() ?: return null
         listsCollection().document(doc.id)
-            .update("members", com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+            .update("members", FieldValue.arrayUnion(userId))
             .await()
-        return ShoppingList(
-            id = doc.id,
-            name = doc.getString("name") ?: "",
-            ownerId = doc.getString("ownerId") ?: "",
-            members = (doc.get("members") as? List<*>)?.filterIsInstance<String>()?.plus(userId) ?: listOf(userId),
-            inviteCode = inviteCode,
-            customLocations = (doc.get("customLocations") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
-        )
+        val list = doc.toShoppingList() ?: return null
+        // המשתמש זה עתה נוסף — נצרף אותו ל-members המוחזרים אם עוד לא קיים.
+        return if (userId in list.members) list else list.copy(members = list.members + userId)
     }
 
-    suspend fun saveUserFcmToken(userId: String, token: String) {
-        firestore.collection("users").document(userId)
-            .set(mapOf("fcmToken" to token), com.google.firebase.firestore.SetOptions.merge())
-            .await()
+    companion object {
+        private const val TAG = "FirestoreService"
     }
 }

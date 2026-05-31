@@ -48,5 +48,25 @@
 - [ ] מיון ידני של פריטים בתוך קטגוריה (drag & drop)
 
 ### 🟢 LOW — תשתית
-- [ ] Firebase Cloud Functions לשליחת Push Notifications
 - [ ] Multiple lists — ארכיטקטורה מוכנה (listId קיים), ממתין ל-UX
+
+---
+
+## ✅ Hardening לקראת סיום (2026-05-31)
+
+### חוסם הפצה / אבטחה
+- ✅ `app/proguard-rules.pro` — keep rules ל-Firestore/Gemini/models (release עם minify לא ייכשל)
+- ✅ `firestore.rules` + `storage.rules` + `firebase.json` בריפו (membership-based access)
+- ✅ versionCode 1→2, versionName 1.0→1.1
+
+### ארכיטקטורה חינמית — ללא Blaze (Spark בלבד)
+המשתמש בחר לא לשלם. Cloud Functions ו-Storage חדש דורשים Blaze — לכן:
+- ✅ **תמונות → base64 ב-Firestore**: `ImageUploader.encodeItemImage` (720px/JPEG75 → base64), composable `ItemImage` (base64/URL), הוסרה כל תלות ב-Firebase Storage
+- ✅ **התראות → מקומיות**: `ItemNotificationHelper` + זיהוי פריטים חדשים ב-`HomeViewModel.observeItems`. עובד כשהאפליקציה רצה (אין שרת). הוסרה תשתית FCM + Cloud Function
+- ✅ **firestore.rules נפרס בהצלחה** (Console: buy-smart-62b61, benqueman@gmail.com). **אין יותר מה לפרוס — הכל בצד הלקוח**
+
+### איכות קוד
+- ✅ חילוץ `DocumentSnapshot.toShoppingItem()` (היה משוכפל פעמיים) + logging בכל catch
+- ✅ `errorMessage` ב-HomeUiState + Snackbar שגיאות (יצירת רשימה / הוספה / עיבוד תמונה)
+- ✅ Firestore offline persistence מפורש (PersistentCacheSettings)
+- ✅ unit tests: QuantityUtils, LocationKey, Gemini parsing (חולצו ללוגיקה testable)

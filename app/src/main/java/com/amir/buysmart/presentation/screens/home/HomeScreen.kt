@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.amir.buysmart.presentation.components.ImagePickerButton
+import com.amir.buysmart.presentation.components.ItemImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
@@ -74,6 +75,12 @@ fun HomeScreen(
         } else {
             viewModel.clearRecentlyDeleted()
         }
+    }
+
+    LaunchedEffect(state.errorMessage) {
+        val message = state.errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+        viewModel.clearError()
     }
 
     LaunchedEffect(inviteCodeFromLink) {
@@ -515,18 +522,29 @@ private fun EditItemBottomSheet(
 
             // תמונה
             Text("תמונה (אופציונלי)", style = MaterialTheme.typography.titleSmall)
-            val displayed: Any? = pendingImageUri ?: item.imageUrl.takeIf { it.isNotBlank() }
-            if (displayed != null) {
+            val hasImage = pendingImageUri != null || item.imageUrl.isNotBlank()
+            if (hasImage) {
                 Box(Modifier.fillMaxWidth()) {
-                    AsyncImage(
-                        model = displayed,
-                        contentDescription = "תמונת המוצר",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                    val imageModifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                    if (pendingImageUri != null) {
+                        // תצוגה מקדימה של תמונה שזה עתה נבחרה (Uri מקומי)
+                        AsyncImage(
+                            model = pendingImageUri,
+                            contentDescription = "תמונת המוצר",
+                            modifier = imageModifier,
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        ItemImage(
+                            data = item.imageUrl,
+                            contentDescription = "תמונת המוצר",
+                            modifier = imageModifier,
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                     if (isUploadingImage) {
                         Box(
                             Modifier.fillMaxWidth().height(160.dp),

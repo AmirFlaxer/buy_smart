@@ -189,11 +189,12 @@ class AddItemViewModel @Inject constructor(
     fun onImagePicked(context: Context, uri: Uri) {
         _uiState.update { it.copy(pendingImageUri = uri, isUploadingImage = true) }
         viewModelScope.launch {
-            val url = imageUploader.uploadItemImage(context, listId, uri)
+            // התמונה מקודדת ל-base64 ונשמרת ישירות במסמך הפריט ב-Firestore
+            val encoded = imageUploader.encodeItemImage(context, uri)
             _uiState.update { it.copy(
-                imageUrl = url ?: it.imageUrl,
+                imageUrl = encoded ?: it.imageUrl,
                 isUploadingImage = false,
-                pendingImageUri = if (url != null) null else it.pendingImageUri
+                pendingImageUri = if (encoded != null) null else it.pendingImageUri
             )}
         }
     }

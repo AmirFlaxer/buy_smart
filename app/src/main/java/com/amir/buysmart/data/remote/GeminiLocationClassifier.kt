@@ -29,8 +29,18 @@ class GeminiLocationClassifier @Inject constructor() {
         if (BuildConfig.GEMINI_API_KEY.isBlank()) return null
         return try {
             val response = model.generateContent(itemName)
-            val text = response.text?.trim()?.lowercase() ?: return null
-            when {
+            parseLocation(response.text ?: return null)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    companion object {
+        /** ממפה את תשובת המודל (טקסט חופשי) לקטגוריה. internal לצורך בדיקות. */
+        internal fun parseLocation(rawText: String): ShoppingLocation? {
+            val text = rawText.trim().lowercase()
+            if (text.isBlank()) return null
+            return when {
                 "ירקניה" in text || "ירקן" in text -> ShoppingLocation.GREENGROCER
                 "מזון_מוכן" in text || "מזון מוכן" in text -> ShoppingLocation.DELI
                 "מאפייה" in text                   -> ShoppingLocation.BAKERY
@@ -38,8 +48,6 @@ class GeminiLocationClassifier @Inject constructor() {
                 "אחר" in text                      -> null
                 else                               -> ShoppingLocation.SUPERMARKET
             }
-        } catch (e: Exception) {
-            null
         }
     }
 }

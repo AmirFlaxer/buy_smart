@@ -25,6 +25,7 @@ import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.presentation.components.AddCustomLocationDialog
 import com.amir.buysmart.presentation.components.ImagePickerButton
+import com.amir.buysmart.presentation.components.ItemImage
 import com.amir.buysmart.presentation.components.LocationChipRow
 import com.amir.buysmart.presentation.components.VoiceInputButton
 
@@ -218,18 +219,28 @@ fun AddItemScreen(
 
             // תמונה
             Text("תמונת המוצר (אופציונלי)", style = MaterialTheme.typography.titleMedium)
-            val displayedUri = state.pendingImageUri?.toString() ?: state.imageUrl
-            if (displayedUri.isNotBlank()) {
+            val hasImage = state.pendingImageUri != null || state.imageUrl.isNotBlank()
+            if (hasImage) {
                 Box(Modifier.fillMaxWidth()) {
-                    AsyncImage(
-                        model = displayedUri,
-                        contentDescription = "תמונת המוצר",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                    val imageModifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                    if (state.pendingImageUri != null) {
+                        AsyncImage(
+                            model = state.pendingImageUri,
+                            contentDescription = "תמונת המוצר",
+                            modifier = imageModifier,
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        ItemImage(
+                            data = state.imageUrl,
+                            contentDescription = "תמונת המוצר",
+                            modifier = imageModifier,
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                     if (state.isUploadingImage) {
                         Box(
                             Modifier.fillMaxWidth().height(180.dp),

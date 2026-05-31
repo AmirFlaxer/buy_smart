@@ -16,7 +16,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
@@ -125,8 +124,8 @@ fun ItemRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (item.imageUrl.isNotBlank()) {
-            AsyncImage(
-                model = item.imageUrl,
+            ItemImage(
+                data = item.imageUrl,
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
