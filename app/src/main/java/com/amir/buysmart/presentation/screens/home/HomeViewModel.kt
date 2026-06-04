@@ -9,6 +9,8 @@ import com.amir.buysmart.data.remote.ImageUploader
 import com.amir.buysmart.domain.model.ItemNotePresets
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.JoinRequest
+import com.amir.buysmart.domain.model.JoinResult
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
@@ -52,6 +54,10 @@ data class HomeUiState(
     val editIsUploadingImage: Boolean = false,
     // מחיקה אחרונה — לטובת undo
     val recentlyDeleted: ShoppingItem? = null,
+    // בקשות הצטרפות ממתינות לרשימה הפעילה (צד המאשר)
+    val joinRequests: List<JoinRequest> = emptyList(),
+    // בקשת הצטרפות שלי שממתינה לאישור (צד המבקש)
+    val pendingJoin: PendingJoin? = null,
     // הודעת שגיאה חד-פעמית להצגה ב-Snackbar
     val errorMessage: String? = null
 ) {
@@ -62,6 +68,9 @@ data class HomeUiState(
     val customLocations: List<String>
         get() = activeList?.customLocations ?: emptyList()
 }
+
+/** בקשת הצטרפות ממתינה לאישור שהמשתמש שלח. */
+data class PendingJoin(val listId: String, val listName: String)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -83,17 +92,35 @@ class HomeViewModel @Inject constructor(
         ?: auth.currentUser?.email?.substringBefore("@") ?: ""
 
     private var itemsJob: Job? = null
+    private var requestsJob: Job? = null
+    private var pendingJob: Job? = null
+    private var memberListIds: Set<String> = emptySet()
     private var autoCreateAttempted = false
     private var locationJob: Job? = null
     // מזהי הפריטים הידועים — לזיהוי פריטים חדשים לצורך התראה. null = טרם נטען
     private var knownItemIds: Set<String>? = null
 
-    init { loadActiveList() }
+    init {
+        loadActiveList()
+        restorePendingJoin()
+    }
 
     private fun loadActiveList() {
         viewModelScope.launch {
             listRepository.getUserLists(userId).collect { lists ->
-                val storedListId = listRepository.getActiveListId(userId)
+                memberListIds = lists.map { it.id }.toSet()
+                var storedListId = listRepository.getActiveListId(userId)
+
+                // זיהוי אישור: אם יש בקשה ממתינה והרשימה הופיעה בחברויות — אושרתי
+                val pending = _uiState.value.pendingJoin
+                if (pending != null && pending.listId in memberListIds) {
+                    listRepository.clearPendingJoin()
+                    listRepository.setActiveList(userId, pending.listId)
+                    stopObservingMyRequest()
+                    storedListId = pending.listId
+                    _uiState.update { it.copy(pendingJoin = null, errorMessage = "אושרת לרשימה \"${pending.listName}\"") }
+                }
+
                 val target = lists.find { it.id == storedListId } ?: lists.firstOrNull()
                 val prevId = _uiState.value.activeList?.id
                 if (target != null) {
@@ -101,6 +128,7 @@ class HomeViewModel @Inject constructor(
                     if (prevId != target.id) {
                         if (storedListId != target.id) listRepository.setActiveList(userId, target.id)
                         observeItems(target.id)
+                        observeJoinRequests(target.id)
                     }
                 } else if (!autoCreateAttempted) {
                     autoCreateAttempted = true
@@ -122,6 +150,7 @@ class HomeViewModel @Inject constructor(
                 listRepository.setActiveList(userId, list.id)
                 _uiState.update { it.copy(activeList = list, isCreatingList = false) }
                 observeItems(list.id)
+                observeJoinRequests(list.id)
             } catch (e: Exception) {
                 _uiState.update { it.copy(isCreatingList = false, errorMessage = "יצירת הרשימה נכשלה, נסה שוב") }
             }
@@ -338,29 +367,123 @@ class HomeViewModel @Inject constructor(
         )}
     }
 
-    // ──── הצטרפות / עזיבה ────
+    // ──── הצטרפות / אישור / עזיבה ────
 
+    /** מבקש להצטרף לרשימה לפי קוד — נכנס למצב "ממתין לאישור" (אלא אם כבר חבר). */
     fun joinList(code: String) {
+        val trimmedCode = code.trim()
+        if (trimmedCode.isBlank()) return
         viewModelScope.launch {
-            val list = listRepository.joinListByCode(code, userId)
-            if (list != null) {
-                listRepository.setActiveList(userId, list.id)
-                _uiState.update { it.copy(activeList = list) }
-                observeItems(list.id)
+            when (val result = listRepository.requestToJoin(trimmedCode, userId, displayName)) {
+                is JoinResult.AlreadyMember -> {
+                    itemsJob?.cancel()
+                    listRepository.setActiveList(userId, result.list.id)
+                    _uiState.update { it.copy(activeList = result.list, errorMessage = "אתה כבר חבר ברשימה \"${result.list.name}\"") }
+                    observeItems(result.list.id)
+                    observeJoinRequests(result.list.id)
+                }
+                is JoinResult.Requested -> {
+                    listRepository.setPendingJoin(result.listId, result.listName)
+                    _uiState.update { it.copy(
+                        pendingJoin = PendingJoin(result.listId, result.listName),
+                        errorMessage = "בקשת ההצטרפות נשלחה, ממתינה לאישור"
+                    )}
+                    observeMyRequest(result.listId)
+                }
+                JoinResult.NotFound -> {
+                    _uiState.update { it.copy(errorMessage = "לא נמצאה רשימה עם הקוד $trimmedCode") }
+                }
             }
         }
+    }
+
+    /** מאשר בקשת הצטרפות (כל חבר ברשימה יכול). */
+    fun approveRequest(uid: String) {
+        val listId = _uiState.value.activeList?.id ?: return
+        viewModelScope.launch {
+            try {
+                listRepository.approveJoinRequest(listId, uid)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "האישור נכשל, נסה שוב") }
+            }
+        }
+    }
+
+    /** דוחה בקשת הצטרפות. */
+    fun rejectRequest(uid: String) {
+        val listId = _uiState.value.activeList?.id ?: return
+        viewModelScope.launch {
+            try {
+                listRepository.rejectJoinRequest(listId, uid)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "הדחייה נכשלה, נסה שוב") }
+            }
+        }
+    }
+
+    /** המבקש מבטל את בקשתו הממתינה. */
+    fun cancelJoinRequest() {
+        val pending = _uiState.value.pendingJoin ?: return
+        viewModelScope.launch {
+            stopObservingMyRequest()
+            try { listRepository.rejectJoinRequest(pending.listId, userId) } catch (_: Exception) {}
+            listRepository.clearPendingJoin()
+            _uiState.update { it.copy(pendingJoin = null) }
+        }
+    }
+
+    private fun observeJoinRequests(listId: String) {
+        requestsJob?.cancel()
+        requestsJob = viewModelScope.launch {
+            listRepository.observeJoinRequests(listId).collect { requests ->
+                _uiState.update { it.copy(joinRequests = requests) }
+            }
+        }
+    }
+
+    private fun restorePendingJoin() {
+        viewModelScope.launch {
+            val pending = listRepository.getPendingJoin() ?: return@launch
+            _uiState.update { it.copy(pendingJoin = PendingJoin(pending.first, pending.second)) }
+            observeMyRequest(pending.first)
+        }
+    }
+
+    /** מאזין לבקשה שלי — אם נמחקה ולא הפכתי לחבר, סימן שנדחיתי. */
+    private fun observeMyRequest(listId: String) {
+        pendingJob?.cancel()
+        pendingJob = viewModelScope.launch {
+            listRepository.observeMyJoinRequest(listId, userId).collect { exists ->
+                if (!exists) {
+                    // השהיה קצרה כדי לתת ל-getUserLists לזהות אישור קודם (מניעת race)
+                    delay(1500)
+                    val pending = _uiState.value.pendingJoin
+                    if (pending != null && pending.listId == listId && listId !in memberListIds) {
+                        listRepository.clearPendingJoin()
+                        _uiState.update { it.copy(pendingJoin = null, errorMessage = "בקשת ההצטרפות נדחתה") }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopObservingMyRequest() {
+        pendingJob?.cancel()
+        pendingJob = null
     }
 
     fun leaveList() {
         val list = _uiState.value.activeList ?: return
         viewModelScope.launch {
             itemsJob?.cancel()
+            requestsJob?.cancel()
             listRepository.leaveList(userId, list.id)
             autoCreateAttempted = false
             _uiState.update { it.copy(
                 activeList = null,
                 itemsByCategory = emptyMap(),
                 pendingRefillItems = emptyList(),
+                joinRequests = emptyList(),
                 totalItems = 0,
                 isLoading = true
             )}

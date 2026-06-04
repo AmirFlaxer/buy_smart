@@ -18,8 +18,11 @@ import com.amir.buysmart.presentation.components.ImagePickerButton
 import com.amir.buysmart.presentation.components.ItemImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -31,13 +34,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.JoinRequest
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
@@ -56,10 +62,12 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var backPressedOnce by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var overflowExpanded by remember { mutableStateOf(false) }
     var showLeaveDialog by remember { mutableStateOf(false) }
+    var showJoinDialog by remember { mutableStateOf(false) }
     var showAddCustomLocationDialog by remember { mutableStateOf(false) }
     var showAddCustomFromEditDialog by remember { mutableStateOf(false) }
 
@@ -139,6 +147,26 @@ fun HomeScreen(
                             expanded = overflowExpanded,
                             onDismissRequest = { overflowExpanded = false }
                         ) {
+                            if (list.inviteCode.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("קוד רשימה: ${list.inviteCode}") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString(list.inviteCode))
+                                        Toast.makeText(context, "הקוד הועתק", Toast.LENGTH_SHORT).show()
+                                        overflowExpanded = false
+                                    }
+                                )
+                                HorizontalDivider()
+                            }
+                            DropdownMenuItem(
+                                text = { Text("הצטרף לרשימה") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    showJoinDialog = true
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("עזוב רשימה") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, null) },
@@ -197,6 +225,21 @@ fun HomeScreen(
                         onDeleteCustomLocation = viewModel::removeCustomLocation
                     )
                     HorizontalDivider()
+
+                    state.pendingJoin?.let { pending ->
+                        PendingJoinBanner(
+                            listName = pending.listName,
+                            onCancel = viewModel::cancelJoinRequest
+                        )
+                    }
+
+                    if (state.joinRequests.isNotEmpty()) {
+                        JoinRequestsSection(
+                            requests = state.joinRequests,
+                            onApprove = viewModel::approveRequest,
+                            onReject = viewModel::rejectRequest
+                        )
+                    }
 
                     if (state.pendingRefillItems.isEmpty() && state.itemsByCategory.isEmpty()) {
                         EmptyItemsView()
@@ -269,6 +312,39 @@ fun HomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLeaveDialog = false }) { Text("ביטול") }
+            }
+        )
+    }
+
+    // דיאלוג הצטרפות לרשימה בעזרת קוד
+    if (showJoinDialog) {
+        var codeInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showJoinDialog = false },
+            title = { Text("הצטרף לרשימה") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("הזן את קוד ההזמנה שקיבלת מחבר ברשימה.")
+                    OutlinedTextField(
+                        value = codeInput,
+                        onValueChange = { codeInput = it.filter { c -> !c.isWhitespace() } },
+                        label = { Text("קוד הזמנה") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showJoinDialog = false
+                        viewModel.joinList(codeInput)
+                    },
+                    enabled = codeInput.isNotBlank()
+                ) { Text("הצטרף") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showJoinDialog = false }) { Text("ביטול") }
             }
         )
     }
@@ -739,6 +815,64 @@ private fun AppBarTitle() {
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 lineHeight = 14.sp
             )
+        }
+    }
+}
+
+@Composable
+private fun PendingJoinBanner(listName: String, onCancel: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text(
+                text = "ממתין לאישור הצטרפות ל\"$listName\"",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onCancel) { Text("בטל") }
+        }
+    }
+}
+
+@Composable
+private fun JoinRequestsSection(
+    requests: List<JoinRequest>,
+    onApprove: (String) -> Unit,
+    onReject: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "בקשות הצטרפות (${requests.size})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            requests.forEach { req ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = req.name.ifBlank { "משתמש" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { onApprove(req.uid) }) {
+                        Icon(Icons.Default.Check, "אשר", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = { onReject(req.uid) }) {
+                        Icon(Icons.Default.Close, "דחה", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
         }
     }
 }

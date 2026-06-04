@@ -3,6 +3,8 @@ package com.amir.buysmart.data.remote
 import android.util.Log
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.JoinRequest
+import com.amir.buysmart.domain.model.JoinResult
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.model.ShoppingLocation
@@ -24,6 +26,9 @@ class FirestoreService @Inject constructor(
         firestore.collection("lists").document(listId).collection("items")
 
     private fun listsCollection() = firestore.collection("lists")
+
+    private fun joinRequestsCollection(listId: String) =
+        firestore.collection("lists").document(listId).collection("joinRequests")
 
     /** ממיר מסמך Firestore ל-ShoppingItem. מחזיר null אם המיפוי נכשל. */
     private fun DocumentSnapshot.toShoppingItem(listId: String): ShoppingItem? {
@@ -201,18 +206,62 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
-    suspend fun joinListByCode(inviteCode: String, userId: String): ShoppingList? {
+    /** שולח בקשת הצטרפות לפי קוד. אם כבר חבר — מחזיר AlreadyMember למעבר ישיר. */
+    suspend fun requestToJoin(inviteCode: String, userId: String, userName: String): JoinResult {
         val query = listsCollection()
             .whereEqualTo("inviteCode", inviteCode)
             .get()
             .await()
-        val doc = query.documents.firstOrNull() ?: return null
-        listsCollection().document(doc.id)
-            .update("members", FieldValue.arrayUnion(userId))
+        val doc = query.documents.firstOrNull() ?: return JoinResult.NotFound
+        val list = doc.toShoppingList() ?: return JoinResult.NotFound
+        if (userId in list.members) return JoinResult.AlreadyMember(list)
+        joinRequestsCollection(doc.id).document(userId)
+            .set(mapOf("uid" to userId, "name" to userName))
             .await()
-        val list = doc.toShoppingList() ?: return null
-        // המשתמש זה עתה נוסף — נצרף אותו ל-members המוחזרים אם עוד לא קיים.
-        return if (userId in list.members) list else list.copy(members = list.members + userId)
+        return JoinResult.Requested(doc.id, list.name)
+    }
+
+    /** בקשות הצטרפות ממתינות לרשימה (לצד המאשר). */
+    fun observeJoinRequests(listId: String): Flow<List<JoinRequest>> = callbackFlow {
+        val listener = joinRequestsCollection(listId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.w(TAG, "observeJoinRequests נכשל עבור $listId", error)
+                    close(error); return@addSnapshotListener
+                }
+                val requests = snapshot?.documents?.mapNotNull { d ->
+                    val uid = d.getString("uid") ?: return@mapNotNull null
+                    JoinRequest(uid = uid, name = d.getString("name") ?: "")
+                } ?: emptyList()
+                trySend(requests.sortedBy { it.name })
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /** מאשר בקשה: מוסיף ל-members ומוחק את מסמך הבקשה. */
+    suspend fun approveJoinRequest(listId: String, uid: String) {
+        listsCollection().document(listId)
+            .update("members", FieldValue.arrayUnion(uid))
+            .await()
+        joinRequestsCollection(listId).document(uid).delete().await()
+    }
+
+    /** דוחה/מבטל בקשה: מוחק את מסמך הבקשה בלבד. */
+    suspend fun rejectJoinRequest(listId: String, uid: String) {
+        joinRequestsCollection(listId).document(uid).delete().await()
+    }
+
+    /** true כל עוד קיימת בקשה ממתינה שלי לרשימה (לצד המבקש — לזיהוי דחייה). */
+    fun observeMyJoinRequest(listId: String, uid: String): Flow<Boolean> = callbackFlow {
+        val listener = joinRequestsCollection(listId).document(uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.w(TAG, "observeMyJoinRequest נכשל עבור $listId/$uid", error)
+                    close(error); return@addSnapshotListener
+                }
+                trySend(snapshot?.exists() == true)
+            }
+        awaitClose { listener.remove() }
     }
 
     companion object {

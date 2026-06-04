@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.amir.buysmart.data.remote.FirestoreService
+import com.amir.buysmart.domain.model.JoinRequest
+import com.amir.buysmart.domain.model.JoinResult
 import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.repository.ListRepository
 import kotlinx.coroutines.flow.Flow
@@ -17,15 +19,14 @@ class ListRepositoryImpl @Inject constructor(
 ) : ListRepository {
 
     private val activeListKey = stringPreferencesKey("active_list_id")
+    private val pendingJoinIdKey = stringPreferencesKey("pending_join_list_id")
+    private val pendingJoinNameKey = stringPreferencesKey("pending_join_list_name")
 
     override fun getUserLists(userId: String): Flow<List<ShoppingList>> =
         firestoreService.getUserLists(userId)
 
     override suspend fun createList(list: ShoppingList): ShoppingList =
         firestoreService.createList(list)
-
-    override suspend fun joinListByCode(inviteCode: String, userId: String): ShoppingList? =
-        firestoreService.joinListByCode(inviteCode, userId)
 
     override suspend fun leaveList(userId: String, listId: String) {
         firestoreService.leaveList(listId, userId)
@@ -45,5 +46,44 @@ class ListRepositoryImpl @Inject constructor(
 
     override suspend fun removeCustomLocation(listId: String, name: String) {
         firestoreService.removeCustomLocation(listId, name)
+    }
+
+    // ──── הצטרפות עם אישור ────
+
+    override suspend fun requestToJoin(inviteCode: String, userId: String, userName: String): JoinResult =
+        firestoreService.requestToJoin(inviteCode, userId, userName)
+
+    override fun observeJoinRequests(listId: String): Flow<List<JoinRequest>> =
+        firestoreService.observeJoinRequests(listId)
+
+    override suspend fun approveJoinRequest(listId: String, uid: String) =
+        firestoreService.approveJoinRequest(listId, uid)
+
+    override suspend fun rejectJoinRequest(listId: String, uid: String) =
+        firestoreService.rejectJoinRequest(listId, uid)
+
+    override fun observeMyJoinRequest(listId: String, uid: String): Flow<Boolean> =
+        firestoreService.observeMyJoinRequest(listId, uid)
+
+    // ──── שמירת בקשה ממתינה מקומית ────
+
+    override suspend fun getPendingJoin(): Pair<String, String>? {
+        val prefs = dataStore.data.first()
+        val id = prefs[pendingJoinIdKey] ?: return null
+        return id to (prefs[pendingJoinNameKey] ?: "")
+    }
+
+    override suspend fun setPendingJoin(listId: String, listName: String) {
+        dataStore.edit {
+            it[pendingJoinIdKey] = listId
+            it[pendingJoinNameKey] = listName
+        }
+    }
+
+    override suspend fun clearPendingJoin() {
+        dataStore.edit {
+            it.remove(pendingJoinIdKey)
+            it.remove(pendingJoinNameKey)
+        }
     }
 }

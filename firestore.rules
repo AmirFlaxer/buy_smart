@@ -3,6 +3,7 @@ rules_version = '2';
 // ───────────────────────── BuySmart Firestore Security Rules ─────────────────────────
 // מבנה: lists/{listId} (name, ownerId, members[], inviteCode, customLocations[])
 //        lists/{listId}/items/{itemId}
+//        lists/{listId}/joinRequests/{uid} (uid, name) — בקשות הצטרפות ממתינות
 //        users/{userId} (fcmToken)
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -25,11 +26,9 @@ service cloud.firestore {
                     && request.auth.uid == request.resource.data.ownerId
                     && request.auth.uid in request.resource.data.members;
 
-      // עדכון: חבר קיים — או הצטרפות עצמית (שינוי members בלבד, מוסיף את עצמו).
-      allow update: if isMember(resource.data)
-                    || (isSignedIn()
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
-                        && request.auth.uid in request.resource.data.members);
+      // עדכון: רק חבר קיים (כולל אישור הצטרפות = הוספת חבר חדש ל-members).
+      // אין יותר הצטרפות עצמית — הצטרפות עוברת דרך joinRequests + אישור חבר.
+      allow update: if isMember(resource.data);
 
       allow delete: if isMember(resource.data);
 
@@ -37,6 +36,16 @@ service cloud.firestore {
         allow read, write: if isMember(
           get(/databases/$(database)/documents/lists/$(listId)).data
         );
+      }
+
+      // בקשות הצטרפות: המבקש יוצר/מבטל את שלו; חבר רואה ומאשר (מחיקה) או דוחה.
+      match /joinRequests/{uid} {
+        function listData() {
+          return get(/databases/$(database)/documents/lists/$(listId)).data;
+        }
+        allow create: if isSignedIn() && request.auth.uid == uid;
+        allow read:   if request.auth.uid == uid || isMember(listData());
+        allow delete: if request.auth.uid == uid || isMember(listData());
       }
     }
   }
