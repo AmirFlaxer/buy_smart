@@ -249,7 +249,17 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            // סקשן "לחידוש" — פריטים שנקנו ומחכים לאישור
+                            // מוצרים לקנייה — מקובצים לפי קטגוריה
+                            items(state.itemsByCategory.entries.toList()) { (key, items) ->
+                                LocationSection(
+                                    key = key,
+                                    items = items,
+                                    onDeleteItem = viewModel::deleteItemWithUndo,
+                                    onEditItem = viewModel::startEditItem
+                                )
+                            }
+
+                            // סקשן "לחידוש" — פריטים שנקנו ומחכים לאישור (בסוף, אחרי הרשימה לקנייה)
                             if (state.pendingRefillItems.isNotEmpty()) {
                                 item {
                                     PendingRefillSection(
@@ -258,15 +268,6 @@ fun HomeScreen(
                                         onDelete = viewModel::deleteItem
                                     )
                                 }
-                            }
-
-                            items(state.itemsByCategory.entries.toList()) { (key, items) ->
-                                LocationSection(
-                                    key = key,
-                                    items = items,
-                                    onDeleteItem = viewModel::deleteItemWithUndo,
-                                    onEditItem = viewModel::startEditItem
-                                )
                             }
                         }
                     }
