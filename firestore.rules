@@ -4,7 +4,7 @@ rules_version = '2';
 // מבנה: lists/{listId} (name, ownerId, members[], inviteCode, customLocations[])
 //        lists/{listId}/items/{itemId}
 //        lists/{listId}/joinRequests/{uid} (uid, name) — בקשות הצטרפות ממתינות
-//        users/{userId} (fcmToken)
+//        inviteCodes/{code} (listId, name) — מיפוי קוד הזמנה → רשימה (get בלבד, ללא סריקה)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -17,18 +17,23 @@ service cloud.firestore {
     }
 
     match /lists/{listId} {
-      // read מותר לכל מאומת — נדרש כדי לאפשר הצטרפות ע"י query לפי inviteCode
-      // (קוד ההזמנה בן 6 הספרות הוא הסוד שמגן על הגישה בפועל).
-      allow read: if isSignedIn();
+      // read מותר רק לחברי הרשימה. ההצטרפות לפי קוד עוברת דרך inviteCodes/{code}
+      // (lookup ישיר לפי מזהה, ללא יכולת לסרוק את כל הרשימות).
+      allow read: if isMember(resource.data);
 
       // יצירה: רק היוצר עצמו, חייב להיות גם הבעלים וגם חבר.
       allow create: if isSignedIn()
                     && request.auth.uid == request.resource.data.ownerId
                     && request.auth.uid in request.resource.data.members;
 
-      // עדכון: רק חבר קיים (כולל אישור הצטרפות = הוספת חבר חדש ל-members).
-      // אין יותר הצטרפות עצמית — הצטרפות עוברת דרך joinRequests + אישור חבר.
-      allow update: if isMember(resource.data);
+      // עדכון: רק חבר קיים, ובהגבלות שלמות:
+      //  - אסור לשנות בעלות (ownerId קבוע).
+      //  - אפשר להסיר מ-members רק את עצמך (אי אפשר "לבעוט" חברים אחרים או את הבעלים).
+      // הוספת חברים (אישור הצטרפות) מותרת — חברים נחשבים מהימנים ממילא.
+      allow update: if isMember(resource.data)
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && resource.data.members.removeAll(request.resource.data.members)
+                         .hasOnly([request.auth.uid]);
 
       allow delete: if isMember(resource.data);
 
@@ -47,6 +52,17 @@ service cloud.firestore {
         allow read:   if request.auth.uid == uid || isMember(listData());
         allow delete: if request.auth.uid == uid || isMember(listData());
       }
+    }
+
+    // מיפוי קוד הזמנה → רשימה. get בלבד: מי שיודע את הקוד (הסוד) יכול לתרגם אותו
+    // ל-listId, אך אין list — אי אפשר לסרוק/למנות את כל הקודים.
+    match /inviteCodes/{code} {
+      allow get: if isSignedIn();
+      // יצירה: רק חבר ברשימה שאליה הקוד ממופה (כולל הבעלים בעת יצירת הרשימה
+      // ו-backfill עצלן ע"י חברים קיימים). המיפוי קבוע — ללא update/delete.
+      allow create: if isSignedIn()
+                    && request.auth.uid in
+                       get(/databases/$(database)/documents/lists/$(request.resource.data.listId)).data.members;
     }
   }
 }

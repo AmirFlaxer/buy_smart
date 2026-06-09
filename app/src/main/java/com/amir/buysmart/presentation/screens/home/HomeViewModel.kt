@@ -143,9 +143,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isCreatingList = true) }
             try {
-                val inviteCode = (100000..999999).random().toString()
+                // קוד ההזמנה נוצר (ייחודית) בתוך createList יחד עם מיפוי ה-lookup.
                 val list = listRepository.createList(
-                    ShoppingList(name = "הרשימה שלנו", ownerId = userId, members = listOf(userId), inviteCode = inviteCode)
+                    ShoppingList(name = "הרשימה שלנו", ownerId = userId, members = listOf(userId))
                 )
                 listRepository.setActiveList(userId, list.id)
                 _uiState.update { it.copy(activeList = list, isCreatingList = false) }

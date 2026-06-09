@@ -30,6 +30,11 @@ class FirestoreService @Inject constructor(
     private fun joinRequestsCollection(listId: String) =
         firestore.collection("lists").document(listId).collection("joinRequests")
 
+    private fun inviteCodesCollection() = firestore.collection("inviteCodes")
+
+    // קודים שכבר ווידאנו/יצרנו להם מיפוי ב-session הזה — למניעת כתיבות חוזרות ב-backfill.
+    private val backfilledCodes = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     /** ממיר מסמך Firestore ל-ShoppingItem. מחזיר null אם המיפוי נכשל. */
     private fun DocumentSnapshot.toShoppingItem(listId: String): ShoppingItem? {
         return try {
@@ -171,21 +176,51 @@ class FirestoreService @Inject constructor(
                     close(error); return@addSnapshotListener
                 }
                 val lists = snapshot?.documents?.mapNotNull { it.toShoppingList() } ?: emptyList()
+                // backfill עצלן: מבטיח שלכל רשימה קיימת יש מיפוי inviteCodes (לרשימות שנוצרו
+                // לפני מעבר ל-lookup). fire-and-forget — לא חוסם את הזרימה.
+                lists.forEach { ensureInviteCodeMapping(it.id, it.inviteCode, it.name) }
                 trySend(lists)
             }
         awaitClose { listener.remove() }
     }
 
     suspend fun createList(list: ShoppingList): ShoppingList {
+        val code = generateUniqueInviteCode()
         val data = mapOf(
             "name" to list.name,
             "ownerId" to list.ownerId,
             "members" to list.members,
-            "inviteCode" to list.inviteCode,
+            "inviteCode" to code,
             "customLocations" to list.customLocations
         )
         val ref = listsCollection().add(data).await()
-        return list.copy(id = ref.id)
+        // מיפוי הקוד → הרשימה (lookup ישיר בהצטרפות, ללא סריקת כל הרשימות).
+        inviteCodesCollection().document(code)
+            .set(mapOf("listId" to ref.id, "name" to list.name))
+            .await()
+        backfilledCodes.add(code)
+        return list.copy(id = ref.id, inviteCode = code)
+    }
+
+    /** מגריל קוד הזמנה בן 6 ספרות שאין לו עדיין מיפוי, כדי למנוע התנגשות. */
+    private suspend fun generateUniqueInviteCode(): String {
+        repeat(10) {
+            val code = (100000..999999).random().toString()
+            val exists = inviteCodesCollection().document(code).get().await().exists()
+            if (!exists) return code
+        }
+        return (100000..999999).random().toString()
+    }
+
+    /** יוצר מיפוי inviteCodes/{code} → listId אם עדיין אין. נקרא ברקע (backfill). */
+    private fun ensureInviteCodeMapping(listId: String, code: String, name: String) {
+        if (code.isBlank() || !backfilledCodes.add(code)) return
+        val doc = inviteCodesCollection().document(code)
+        doc.get().addOnSuccessListener { snap ->
+            if (snap?.exists() != true) {
+                doc.set(mapOf("listId" to listId, "name" to name))
+            }
+        }
     }
 
     suspend fun addCustomLocation(listId: String, name: String) {
@@ -208,17 +243,24 @@ class FirestoreService @Inject constructor(
 
     /** שולח בקשת הצטרפות לפי קוד. אם כבר חבר — מחזיר AlreadyMember למעבר ישיר. */
     suspend fun requestToJoin(inviteCode: String, userId: String, userName: String): JoinResult {
-        val query = listsCollection()
-            .whereEqualTo("inviteCode", inviteCode)
-            .get()
-            .await()
-        val doc = query.documents.firstOrNull() ?: return JoinResult.NotFound
-        val list = doc.toShoppingList() ?: return JoinResult.NotFound
-        if (userId in list.members) return JoinResult.AlreadyMember(list)
-        joinRequestsCollection(doc.id).document(userId)
+        // תרגום הקוד ל-listId דרך lookup ישיר (ללא סריקת כל הרשימות).
+        val mapping = inviteCodesCollection().document(inviteCode).get().await()
+        val listId = mapping.getString("listId")?.takeIf { it.isNotBlank() } ?: return JoinResult.NotFound
+        val listName = mapping.getString("name") ?: ""
+        // בדיקת "כבר חבר": חבר יכול לקרוא את מסמך הרשימה; מי שאינו חבר יקבל
+        // permission-denied — ואז נתייחס אליו כלא-חבר וניצור בקשת הצטרפות.
+        val existingList = try {
+            listsCollection().document(listId).get().await().toShoppingList()
+        } catch (e: Exception) {
+            null
+        }
+        if (existingList != null && userId in existingList.members) {
+            return JoinResult.AlreadyMember(existingList)
+        }
+        joinRequestsCollection(listId).document(userId)
             .set(mapOf("uid" to userId, "name" to userName))
             .await()
-        return JoinResult.Requested(doc.id, list.name)
+        return JoinResult.Requested(listId, listName)
     }
 
     /** בקשות הצטרפות ממתינות לרשימה (לצד המאשר). */
