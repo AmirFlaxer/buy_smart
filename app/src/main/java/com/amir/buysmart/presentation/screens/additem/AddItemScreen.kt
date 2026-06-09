@@ -184,7 +184,7 @@ fun AddItemScreen(
             )
 
             // מקום קנייה
-            Text("מקום קנייה", style = MaterialTheme.typography.titleMedium)
+            Text("מקום קנייה", style = MaterialTheme.typography.titleSmall)
             LocationChipRow(
                 selected = state.selectedKey,
                 customLocations = state.customLocations,
@@ -194,7 +194,7 @@ fun AddItemScreen(
             )
 
             // דחיפות
-            Text("דחיפות", style = MaterialTheme.typography.titleMedium)
+            Text("דחיפות", style = MaterialTheme.typography.titleSmall)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 ItemPriority.entries.forEachIndexed { index, priority ->
                     SegmentedButton(
@@ -206,7 +206,7 @@ fun AddItemScreen(
             }
 
             // סוג פריט
-            Text("סוג", style = MaterialTheme.typography.titleMedium)
+            Text("סוג", style = MaterialTheme.typography.titleSmall)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 ItemType.entries.forEachIndexed { index, type ->
                     SegmentedButton(
@@ -218,7 +218,7 @@ fun AddItemScreen(
             }
 
             // תמונה
-            Text("תמונת המוצר (אופציונלי)", style = MaterialTheme.typography.titleMedium)
+            Text("תמונת המוצר (אופציונלי)", style = MaterialTheme.typography.titleSmall)
             val hasImage = state.pendingImageUri != null || state.imageUrl.isNotBlank()
             if (hasImage) {
                 Box(Modifier.fillMaxWidth()) {

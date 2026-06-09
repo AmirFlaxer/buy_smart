@@ -11,17 +11,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.presentation.components.ItemImage
 import com.amir.buysmart.presentation.components.LocationChipRow
+import com.amir.buysmart.presentation.theme.priorityTint
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -183,9 +182,7 @@ fun ShoppingScreen(
 private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
     val containerColor = when {
         item.isBought -> MaterialTheme.colorScheme.surfaceVariant
-        item.priority == ItemPriority.URGENT -> Color(0xFFFFCDD2)
-        item.priority == ItemPriority.NOT_URGENT -> Color(0xFFFFF9C4)
-        else -> MaterialTheme.colorScheme.surface
+        else -> priorityTint(item.priority) ?: MaterialTheme.colorScheme.surface
     }
     Card(
         modifier = Modifier.fillMaxWidth(),

@@ -51,6 +51,9 @@ import com.amir.buysmart.presentation.components.AddCustomLocationDialog
 import com.amir.buysmart.presentation.components.LocationChipRow
 import com.amir.buysmart.presentation.components.LocationSection
 import com.amir.buysmart.presentation.components.VoiceInputButton
+import com.amir.buysmart.presentation.theme.BrandLogoEnd
+import com.amir.buysmart.presentation.theme.BrandLogoStart
+import com.amir.buysmart.presentation.theme.BrandSpark
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -451,7 +454,7 @@ private fun PendingRefillSection(
                             Spacer(Modifier.width(4.dp))
                             Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
                         }
-                        IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(48.dp)) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "מחק",
@@ -729,38 +732,39 @@ private fun QuickAddBar(
             onAddCustom = onAddCustomLocation,
             onDeleteCustom = onDeleteCustomLocation
         )
-        // דחיפות
-        Spacer(Modifier.height(4.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            ItemPriority.entries.forEach { p ->
-                FilterChip(
-                    selected = priority == p,
-                    onClick = { onPriorityChange(p) },
-                    label = { Text("${p.emoji} ${p.displayName}", style = MaterialTheme.typography.labelSmall) }
-                )
-            }
-        }
-        // הערות מהירות
-        if (presetNotes.isNotEmpty()) {
+        // דחיפות + הערות מהירות - מוצגות רק כשמתחילים להקליד, לצמצום עומס ויזואלי
+        if (name.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
-            Text(
-                "הערות מהירות",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                presetNotes.forEach { preset ->
+                ItemPriority.entries.forEach { p ->
                     FilterChip(
-                        selected = preset in selectedNoteParts,
-                        onClick = { onPresetNoteToggle(preset) },
-                        label = { Text(preset, style = MaterialTheme.typography.labelSmall) }
+                        selected = priority == p,
+                        onClick = { onPriorityChange(p) },
+                        label = { Text("${p.emoji} ${p.displayName}", style = MaterialTheme.typography.labelSmall) }
                     )
+                }
+            }
+            if (presetNotes.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "הערות מהירות",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    presetNotes.forEach { preset ->
+                        FilterChip(
+                            selected = preset in selectedNoteParts,
+                            onClick = { onPresetNoteToggle(preset) },
+                            label = { Text(preset, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
                 }
             }
         }
@@ -779,7 +783,7 @@ private fun AppBarTitle() {
                 .size(38.dp)
                 .background(
                     brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFF26A69A), Color(0xFF004D40)),
+                        colors = listOf(BrandLogoStart, BrandLogoEnd),
                         start = Offset(0f, 0f),
                         end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
                     ),
@@ -796,7 +800,7 @@ private fun AppBarTitle() {
             // ניצוץ זהב בפינה
             Text(
                 text = "✦",
-                color = Color(0xFFFFD740),
+                color = BrandSpark,
                 fontSize = 9.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -885,7 +889,31 @@ private fun EmptyItemsView() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("הרשימה ריקה", style = MaterialTheme.typography.headlineSmall)
-        Text("הוסף פריט בשורה למעלה", style = MaterialTheme.typography.bodyMedium)
+        Box(
+            Modifier
+                .size(96.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.ShoppingCart,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(44.dp)
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "הרשימה ריקה",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "הוסף את הפריט הראשון בשורה שלמעלה ↑",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

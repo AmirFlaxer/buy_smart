@@ -16,9 +16,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
+import com.amir.buysmart.presentation.theme.priorityTint
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,11 +112,7 @@ fun ItemRow(
     onEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val bgColor = when (item.priority) {
-        ItemPriority.URGENT -> Color(0xFFFFCDD2)
-        ItemPriority.NOT_URGENT -> Color(0xFFFFF9C4)
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
+    val bgColor = priorityTint(item.priority) ?: MaterialTheme.colorScheme.surfaceVariant
     Row(
         modifier
             .fillMaxWidth()
@@ -172,12 +168,12 @@ fun ItemRow(
         ) {
             Text("שינוי", style = MaterialTheme.typography.labelSmall)
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
             Icon(
                 Icons.Default.Close,
                 contentDescription = "מחק",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
     }
