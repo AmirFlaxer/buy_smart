@@ -16,11 +16,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
+import com.amir.buysmart.presentation.components.ItemImage
 import com.amir.buysmart.presentation.components.LocationChipRow
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -201,8 +201,8 @@ private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
                 onCheckedChange = { onToggle() }
             )
             if (item.imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = item.imageUrl,
+                ItemImage(
+                    data = item.imageUrl,
                     contentDescription = null,
                     modifier = Modifier
                         .size(48.dp)
