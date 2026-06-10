@@ -81,6 +81,6 @@
 - ✅ מסך הקנייה: listener יחיד על כל הפריטים + סינון בזיכרון (הוסרו `getItemsByCategoryKey` + `GetItemsByLocationUseCase`) - פחות reads, מעבר קטגוריות מיידי
 - ✅ מדריך משתמש: פרק "0. התקנת האפליקציה" (Firebase App Distribution, מקור לא מוכר, סדר לינק-אחרי-התקנה) + הערת אישור הצטרפות. עודכן גם ב-docs (HTML+PDF)
 
-### ⏳ ממתין לפעולה ידנית (פרודקשן)
-- [ ] `firebase deploy --only firestore:rules` - תיקוני האבטחה (Vuln 1+2) עדיין לא פעילים בשרת
-- [ ] הפצת APK 1.2 לבודקים דרך App Distribution - **חייב לצאת יחד עם פריסת ה-rules**
+### ✅ פרודקשן (בוצע 2026-06-10)
+- ✅ `firebase deploy --only firestore:rules` - תיקוני האבטחה (Vuln 1+2) פעילים בשרת
+- ✅ APK 1.2 (versionCode 3) הופץ לבודקים דרך App Distribution (iris.ynet@gmail.com)
