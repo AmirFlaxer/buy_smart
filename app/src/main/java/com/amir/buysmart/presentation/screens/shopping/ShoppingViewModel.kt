@@ -5,9 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.repository.ListRepository
 import com.amir.buysmart.domain.usecase.FinishShoppingUseCase
-import com.amir.buysmart.domain.usecase.GetItemsByLocationUseCase
 import com.amir.buysmart.domain.usecase.ToggleItemBoughtUseCase
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +28,7 @@ data class ShoppingUiState(
 
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
-    private val getItemsByLocation: GetItemsByLocationUseCase,
+    private val itemRepository: ItemRepository,
     private val toggleItemBought: ToggleItemBoughtUseCase,
     private val finishShopping: FinishShoppingUseCase,
     private val listRepository: ListRepository,
@@ -41,11 +41,13 @@ class ShoppingViewModel @Inject constructor(
     private var currentListId = ""
     private var itemsJob: Job? = null
     private var listJob: Job? = null
+    // כל פריטי הרשימה — listener יחיד; מעבר קטגוריה מסנן בזיכרון ללא קריאה חוזרת
+    private var allItems: List<ShoppingItem> = emptyList()
 
     fun init(listId: String) {
         currentListId = listId
         observeList(listId)
-        loadItems(listId, _uiState.value.selectedKey)
+        observeItems(listId)
     }
 
     private fun observeList(listId: String) {
@@ -59,22 +61,26 @@ class ShoppingViewModel @Inject constructor(
         }
     }
 
-    fun selectLocationKey(key: LocationKey) {
-        _uiState.update { it.copy(selectedKey = key) }
-        loadItems(currentListId, key)
-    }
-
-    private fun loadItems(listId: String, key: LocationKey) {
+    private fun observeItems(listId: String) {
         itemsJob?.cancel()
         itemsJob = viewModelScope.launch {
-            getItemsByLocation(listId, key.key).collect { items ->
+            itemRepository.getItemsForList(listId).collect { items ->
+                allItems = items
                 _uiState.update { it.copy(
-                    items = items.sortedWith(compareBy({ it.isBought }, { it.priority.ordinal })),
+                    items = filterByKey(items, it.selectedKey),
                     isLoading = false
                 )}
             }
         }
     }
+
+    fun selectLocationKey(key: LocationKey) {
+        _uiState.update { it.copy(selectedKey = key, items = filterByKey(allItems, key)) }
+    }
+
+    private fun filterByKey(items: List<ShoppingItem>, key: LocationKey): List<ShoppingItem> =
+        items.filter { it.categoryKey == key.key && !it.pendingRefill }
+            .sortedWith(compareBy({ it.isBought }, { it.priority.ordinal }))
 
     fun toggleBought(item: ShoppingItem) {
         viewModelScope.launch {

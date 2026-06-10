@@ -295,7 +295,8 @@ class HomeViewModel @Inject constructor(
         val listId = state.activeList?.id ?: return
         if (state.quickAddName.isBlank()) return
 
-        val duplicate = state.itemsByCategory.values.flatten()
+        // כפילות נבדקת גם מול אזור "לחידוש" — שם הדיאלוג מציע להחזיר במקום להוסיף כפול
+        val duplicate = (state.itemsByCategory.values.flatten() + state.pendingRefillItems)
             .firstOrNull { it.name.trim().equals(state.quickAddName.trim(), ignoreCase = true) }
         if (duplicate != null) {
             _uiState.update { it.copy(quickAddDuplicate = duplicate) }
@@ -340,6 +341,15 @@ class HomeViewModel @Inject constructor(
         val newQty = QuantityUtils.increment(duplicate.quantity)
         viewModelScope.launch {
             itemRepository.updateItem(duplicate.copy(quantity = newQty))
+            resetQuickAdd()
+        }
+    }
+
+    /** הפריט הכפול ממתין "לחידוש" — מחזיר אותו לרשימה הפעילה במקום ליצור כפול. */
+    fun restoreFromPendingRefillDuplicate() {
+        val duplicate = _uiState.value.quickAddDuplicate ?: return
+        viewModelScope.launch {
+            itemRepository.approvePendingRefill(duplicate)
             resetQuickAdd()
         }
     }
@@ -525,7 +535,7 @@ class HomeViewModel @Inject constructor(
         val item = _uiState.value.recentlyDeleted ?: return
         _uiState.update { it.copy(recentlyDeleted = null) }
         viewModelScope.launch {
-            // התמונה לא נמחקה מ-Storage בזמן חלון ה-undo, כך שה-imageUrl עדיין תקף
+            // התמונה (base64) שמורה בתוך הפריט עצמו, כך שהיא משוחזרת יחד איתו
             addItemUseCase(item.copy(id = ""))
         }
     }

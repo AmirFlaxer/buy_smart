@@ -151,6 +151,23 @@ class FirestoreService @Inject constructor(
         itemsCollection(listId).document(itemId).delete().await()
     }
 
+    /**
+     * סיום קנייה בקטגוריה ב-batch אטומי אחד: מחיקת החד-פעמיים והעברת החוזרים
+     * ל"לחידוש". כשל רשת באמצע לא משאיר את הקטגוריה חצי-מטופלת.
+     */
+    suspend fun finishShoppingBatch(listId: String, deleteIds: List<String>, refillIds: List<String>) {
+        if (deleteIds.isEmpty() && refillIds.isEmpty()) return
+        val batch = firestore.batch()
+        deleteIds.forEach { batch.delete(itemsCollection(listId).document(it)) }
+        refillIds.forEach {
+            batch.update(
+                itemsCollection(listId).document(it),
+                mapOf("pendingRefill" to true, "isBought" to false)
+            )
+        }
+        batch.commit().await()
+    }
+
     suspend fun getBoughtItemsByCategoryKey(listId: String, categoryKey: String): List<ShoppingItem> {
         val isCustom = categoryKey.startsWith("CUSTOM:")
         val customName = if (isCustom) categoryKey.removePrefix("CUSTOM:") else ""

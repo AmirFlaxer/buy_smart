@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.Flow
 
 interface ItemRepository {
     fun getItemsForList(listId: String): Flow<List<ShoppingItem>>
-    fun getItemsByCategoryKey(listId: String, categoryKey: String): Flow<List<ShoppingItem>>
     suspend fun addItem(item: ShoppingItem)
     suspend fun toggleBought(itemId: String, listId: String, isBought: Boolean)
     suspend fun deleteItem(itemId: String, listId: String)

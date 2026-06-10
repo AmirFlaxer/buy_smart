@@ -11,7 +11,6 @@ import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 
@@ -23,13 +22,9 @@ class ItemRepositoryImpl @Inject constructor(
 
     override fun getItemsForList(listId: String): Flow<List<ShoppingItem>> {
         return firestoreService.getItemsForList(listId).onEach { items ->
-            items.forEach { itemDao.insertItem(ShoppingItemEntity.fromDomain(it)) }
-        }
-    }
-
-    override fun getItemsByCategoryKey(listId: String, categoryKey: String): Flow<List<ShoppingItem>> {
-        return firestoreService.getItemsForList(listId).map { items ->
-            items.filter { it.categoryKey == categoryKey && !it.pendingRefill }
+            // החלפה מלאה של פריטי הרשימה — כך פריטים שנמחקו ע"י משתמש אחר
+            // לא נשארים במטמון ולא מופיעים בהשלמה האוטומטית
+            itemDao.replaceItemsForList(listId, items.map { ShoppingItemEntity.fromDomain(it) })
         }
     }
 
@@ -73,16 +68,15 @@ class ItemRepositoryImpl @Inject constructor(
 
     override suspend fun finishShopping(listId: String, categoryKey: String) {
         val boughtItems = firestoreService.getBoughtItemsByCategoryKey(listId, categoryKey)
-        boughtItems.forEach { item ->
-            if (item.type == ItemType.ONE_TIME) {
-                firestoreService.deleteItem(item.id, listId)
-                itemDao.deleteItem(item.id)
-            } else {
-                // RECURRING: עובר לאזור "לחידוש" — מחכה לאישור לפני שחוזר לרשימה
-                firestoreService.setPendingRefill(item.id, listId, true)
-                itemDao.setPendingRefillAndResetBought(item.id, true)
-            }
-        }
+        // ONE_TIME נמחק; RECURRING עובר לאזור "לחידוש" — מחכה לאישור לפני שחוזר לרשימה
+        val (oneTime, recurring) = boughtItems.partition { it.type == ItemType.ONE_TIME }
+        firestoreService.finishShoppingBatch(
+            listId,
+            deleteIds = oneTime.map { it.id },
+            refillIds = recurring.map { it.id }
+        )
+        itemDao.deleteItemsByIds(oneTime.map { it.id })
+        recurring.forEach { itemDao.setPendingRefillAndResetBought(it.id, true) }
     }
 
     override suspend fun approvePendingRefill(item: ShoppingItem) {

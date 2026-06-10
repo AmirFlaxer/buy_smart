@@ -15,6 +15,19 @@ interface ItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: ShoppingItemEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertItems(items: List<ShoppingItemEntity>)
+
+    @Query("DELETE FROM shopping_items WHERE listId = :listId")
+    suspend fun deleteItemsForList(listId: String)
+
+    /** מחליף את כל פריטי הרשימה בתוכן ה-snapshot — מסלק פריטים שנמחקו במכשיר אחר. */
+    @Transaction
+    suspend fun replaceItemsForList(listId: String, items: List<ShoppingItemEntity>) {
+        deleteItemsForList(listId)
+        insertItems(items)
+    }
+
     @Query("UPDATE shopping_items SET isBought = :isBought WHERE id = :id")
     suspend fun updateBought(id: String, isBought: Boolean)
 

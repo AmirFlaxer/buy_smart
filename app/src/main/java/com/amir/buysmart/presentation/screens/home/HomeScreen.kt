@@ -279,18 +279,31 @@ fun HomeScreen(
         }
     }
 
-    // דיאלוג כפילות
+    // דיאלוג כפילות — פריט פעיל מציע "הגדל כמות", פריט שממתין לחידוש מציע "החזר לרשימה"
     state.quickAddDuplicate?.let { existing ->
         AlertDialog(
             onDismissRequest = viewModel::dismissQuickAddDuplicate,
-            title = { Text("${existing.name} כבר ברשימה") },
+            title = {
+                Text(if (existing.pendingRefill) "${existing.name} ממתין לחידוש" else "${existing.name} כבר ברשימה")
+            },
             text = {
                 val qtyText = if (existing.quantity.isNotBlank()) " (${existing.quantity})" else ""
-                Text("${existing.name}$qtyText כבר קיים ב${existing.location.displayName}.\nמה לעשות?")
+                Text(
+                    if (existing.pendingRefill)
+                        "${existing.name}$qtyText נמצא באזור \"לחידוש\".\nלהחזיר אותו לרשימה?"
+                    else
+                        "${existing.name}$qtyText כבר קיים ב${existing.location.displayName}.\nמה לעשות?"
+                )
             },
             confirmButton = {
-                Button(onClick = viewModel::increaseQuantityFromDuplicate) {
-                    Text("הגדל כמות")
+                if (existing.pendingRefill) {
+                    Button(onClick = viewModel::restoreFromPendingRefillDuplicate) {
+                        Text("החזר לרשימה")
+                    }
+                } else {
+                    Button(onClick = viewModel::increaseQuantityFromDuplicate) {
+                        Text("הגדל כמות")
+                    }
                 }
             },
             dismissButton = {
