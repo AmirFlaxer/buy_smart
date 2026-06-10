@@ -70,3 +70,17 @@
 - ✅ `errorMessage` ב-HomeUiState + Snackbar שגיאות (יצירת רשימה / הוספה / עיבוד תמונה)
 - ✅ Firestore offline persistence מפורש (PersistentCacheSettings)
 - ✅ unit tests: QuantityUtils, LocationKey, Gemini parsing (חולצו ללוגיקה testable)
+
+---
+
+## ✅ אמינות וביצועים (2026-06-10)
+
+- ✅ `finishShopping` אטומי - WriteBatch אחד במקום לולאת מחיקות/עדכונים (כשל רשת לא משאיר קטגוריה חצי-מטופלת)
+- ✅ בדיקת כפילויות ב-QuickAdd כוללת פריטי "לחידוש" - דיאלוג מציע "החזר לרשימה" במקום ליצור כפול
+- ✅ מטמון Room מוחלף במלואו בכל snapshot (`replaceItemsForList`) - פריטים שנמחקו במכשיר אחר לא נשארים בהשלמה האוטומטית
+- ✅ מסך הקנייה: listener יחיד על כל הפריטים + סינון בזיכרון (הוסרו `getItemsByCategoryKey` + `GetItemsByLocationUseCase`) - פחות reads, מעבר קטגוריות מיידי
+- ✅ מדריך משתמש: פרק "0. התקנת האפליקציה" (Firebase App Distribution, מקור לא מוכר, סדר לינק-אחרי-התקנה) + הערת אישור הצטרפות. עודכן גם ב-docs (HTML+PDF)
+
+### ⏳ ממתין לפעולה ידנית (פרודקשן)
+- [ ] `firebase deploy --only firestore:rules` - תיקוני האבטחה (Vuln 1+2) עדיין לא פעילים בשרת
+- [ ] הפצת APK 1.2 לבודקים דרך App Distribution - **חייב לצאת יחד עם פריסת ה-rules**
