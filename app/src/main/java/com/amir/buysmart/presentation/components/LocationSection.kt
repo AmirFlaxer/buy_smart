@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
+import com.amir.buysmart.domain.util.ItemNameKey
 import com.amir.buysmart.presentation.theme.priorityTint
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,6 +28,8 @@ fun LocationSection(
     items: List<ShoppingItem>,
     onDeleteItem: (ShoppingItem) -> Unit,
     onEditItem: (ShoppingItem) -> Unit = {},
+    duplicateNameKeys: Set<String> = emptySet(),
+    onMergeDuplicates: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -49,10 +52,13 @@ fun LocationSection(
             }
             Spacer(Modifier.height(8.dp))
             items.forEach { item ->
+                val nameKey = ItemNameKey.of(item.name)
                 SwipeableItemRow(
                     item = item,
                     onDelete = { onDeleteItem(item) },
                     onEdit = { onEditItem(item) },
+                    isDuplicate = duplicateNameKeys.contains(nameKey),
+                    onMerge = { onMergeDuplicates(nameKey) },
                     modifier = Modifier.padding(vertical = 2.dp)
                 )
             }
@@ -66,6 +72,8 @@ private fun SwipeableItemRow(
     item: ShoppingItem,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    isDuplicate: Boolean = false,
+    onMerge: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
@@ -101,7 +109,7 @@ private fun SwipeableItemRow(
             }
         }
     ) {
-        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit)
+        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit, isDuplicate = isDuplicate, onMerge = onMerge)
     }
 }
 
@@ -110,9 +118,12 @@ fun ItemRow(
     item: ShoppingItem,
     onDelete: () -> Unit,
     onEdit: () -> Unit = {},
+    isDuplicate: Boolean = false,
+    onMerge: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val bgColor = priorityTint(item.priority) ?: MaterialTheme.colorScheme.surfaceVariant
+    val bgColor = if (isDuplicate) MaterialTheme.colorScheme.errorContainer
+                  else priorityTint(item.priority) ?: MaterialTheme.colorScheme.surfaceVariant
     Row(
         modifier
             .fillMaxWidth()
@@ -159,6 +170,15 @@ fun ItemRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
+            }
+        }
+        if (isDuplicate) {
+            TextButton(
+                onClick = onMerge,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Text("מזג", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             }
         }
         TextButton(

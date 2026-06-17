@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -178,6 +179,17 @@ fun HomeScreen(
                                     showLeaveDialog = true
                                 }
                             )
+                            HorizontalDivider()
+                            val nextPref = if (state.mergeUnitPreference == "WEIGHT") "COUNT" else "WEIGHT"
+                            val prefLabel = if (state.mergeUnitPreference == "WEIGHT") "משקל" else "יחידות"
+                            DropdownMenuItem(
+                                text = { Text("העדפת מיזוג: $prefLabel") },
+                                leadingIcon = { Icon(Icons.Default.Tune, null) },
+                                onClick = {
+                                    viewModel.setMergeUnitPreference(nextPref)
+                                    overflowExpanded = false
+                                }
+                            )
                         }
                     }
                 }
@@ -258,7 +270,9 @@ fun HomeScreen(
                                     key = key,
                                     items = items,
                                     onDeleteItem = viewModel::deleteItemWithUndo,
-                                    onEditItem = viewModel::startEditItem
+                                    onEditItem = viewModel::startEditItem,
+                                    duplicateNameKeys = state.duplicateGroups.keys,
+                                    onMergeDuplicates = viewModel::mergeDuplicates
                                 )
                             }
 
