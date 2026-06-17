@@ -16,6 +16,7 @@ coroutines = "1.9.0"
 googleServices = "4.4.2"
 firebaseAppDistribution = "5.0.0"
 coil = "2.7.0"
+glance = "1.1.1"
 junit = "4.13.2"
 
 [libraries]
@@ -47,6 +48,7 @@ firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.r
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth-ktx" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore-ktx" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 google-play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version = "21.3.0" }
 
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }

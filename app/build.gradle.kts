@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.google.play.services.auth)
 
     implementation(libs.coil.compose)
+    implementation(libs.glance.appwidget)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
