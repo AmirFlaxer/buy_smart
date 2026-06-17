@@ -168,6 +168,27 @@ class FirestoreService @Inject constructor(
         batch.commit().await()
     }
 
+    /**
+     * ממזג כפילויות ב-batch אטומי: מעדכן את הפריט השורד ומוחק את המיותרים.
+     * כשל רשת באמצע לא משאיר מצב חצי-ממוזג.
+     */
+    suspend fun mergeItemsBatch(listId: String, survivor: ShoppingItem, deleteIds: List<String>) {
+        if (deleteIds.isEmpty()) return
+        val batch = firestore.batch()
+        batch.update(
+            itemsCollection(listId).document(survivor.id),
+            mapOf(
+                "quantity" to survivor.quantity,
+                "note" to survivor.note,
+                "priority" to survivor.priority.name,
+                "type" to survivor.type.name,
+                "imageUrl" to survivor.imageUrl
+            )
+        )
+        deleteIds.forEach { batch.delete(itemsCollection(listId).document(it)) }
+        batch.commit().await()
+    }
+
     suspend fun getBoughtItemsByCategoryKey(listId: String, categoryKey: String): List<ShoppingItem> {
         val isCustom = categoryKey.startsWith("CUSTOM:")
         val customName = if (isCustom) categoryKey.removePrefix("CUSTOM:") else ""
