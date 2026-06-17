@@ -11,6 +11,7 @@ import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.repository.ListRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 class ListRepositoryImpl @Inject constructor(
@@ -21,6 +22,7 @@ class ListRepositoryImpl @Inject constructor(
     private val activeListKey = stringPreferencesKey("active_list_id")
     private val pendingJoinIdKey = stringPreferencesKey("pending_join_list_id")
     private val pendingJoinNameKey = stringPreferencesKey("pending_join_list_name")
+    private val mergeUnitKey = stringPreferencesKey("merge_unit_preference")
 
     override fun getUserLists(userId: String): Flow<List<ShoppingList>> =
         firestoreService.getUserLists(userId)
@@ -85,5 +87,12 @@ class ListRepositoryImpl @Inject constructor(
             it.remove(pendingJoinIdKey)
             it.remove(pendingJoinNameKey)
         }
+    }
+
+    override fun getMergeUnitPreference(): Flow<String> =
+        dataStore.data.map { it[mergeUnitKey] ?: "WEIGHT" }
+
+    override suspend fun setMergeUnitPreference(value: String) {
+        dataStore.edit { it[mergeUnitKey] = value }
     }
 }
