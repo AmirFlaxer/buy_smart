@@ -178,6 +178,7 @@ class FirestoreService @Inject constructor(
         batch.update(
             itemsCollection(listId).document(survivor.id),
             mapOf(
+                "name" to survivor.name,
                 "quantity" to survivor.quantity,
                 "note" to survivor.note,
                 "priority" to survivor.priority.name,

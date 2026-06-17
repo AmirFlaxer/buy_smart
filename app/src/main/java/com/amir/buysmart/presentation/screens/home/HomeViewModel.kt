@@ -185,6 +185,7 @@ class HomeViewModel @Inject constructor(
                     }
                 val pending = items.filter { it.pendingRefill }
                 val duplicates = activeItems
+                    .filter { !it.isBought }
                     .groupBy { ItemNameKey.of(it.name) }
                     .filter { it.value.size >= 2 }
                 _uiState.update { it.copy(
