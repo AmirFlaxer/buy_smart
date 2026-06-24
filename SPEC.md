@@ -95,5 +95,7 @@
 - ✅ `FirestoreService.mergeItemsBatch` - WriteBatch אטומי (עדכון שורד + מחיקת מיותרים)
 - ✅ העדפת יחידה (משקל/ספירה) ב-DataStore (`merge_unit_preference`), הגדרה בתפריט overflow
 - ✅ HomeViewModel מזהה קבוצות כפילות בכל snapshot (פריטים לא-נקנו), HomeScreen מדגיש (errorContainer) + כפתור "מזג"
-- ⏳ בדיקה ידנית במכשיר ממתינה. הפיצ'ר ב-branch `feature/merge-duplicates` (טרם מוזג ל-master)
+- ✅ אומת ידנית על 2 מכשירים (2026-06-24, דרך App Distribution release 1.2(3)) - עובד
+- ✅ מוזג ל-master (merge commit `0b60fe5`), branch נמחק (מקומי+origin)
 - מסמך עיצוב: `docs/superpowers/specs/2026-06-17-merge-duplicates-design.md`
+- ⚠️ טרם הופץ כגרסה רשמית - versionName עדיין 1.2. לעדכון רחב צריך להעלות versionCode/versionName
