@@ -18,6 +18,7 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.repository.ListRepository
 import com.amir.buysmart.notification.ItemNotificationHelper
+import com.amir.buysmart.domain.util.ItemNameKey
 import com.amir.buysmart.domain.util.QuantityUtils
 import com.amir.buysmart.domain.usecase.AddItemUseCase
 import com.amir.buysmart.domain.usecase.DeleteItemUseCase
@@ -33,6 +34,10 @@ data class HomeUiState(
     val activeList: ShoppingList? = null,
     val itemsByCategory: Map<LocationKey, List<ShoppingItem>> = emptyMap(),
     val pendingRefillItems: List<ShoppingItem> = emptyList(),
+    // קבוצות כפילות (שם מנורמל → פריטי הקבוצה, size >= 2)
+    val duplicateGroups: Map<String, List<ShoppingItem>> = emptyMap(),
+    // העדפת יחידה למיזוג ("WEIGHT"/"COUNT")
+    val mergeUnitPreference: String = "WEIGHT",
     val totalItems: Int = 0,
     val isLoading: Boolean = true,
     val isCreatingList: Boolean = false,
@@ -103,6 +108,15 @@ class HomeViewModel @Inject constructor(
     init {
         loadActiveList()
         restorePendingJoin()
+        observeMergePreference()
+    }
+
+    private fun observeMergePreference() {
+        viewModelScope.launch {
+            listRepository.getMergeUnitPreference().collect { pref ->
+                _uiState.update { it.copy(mergeUnitPreference = pref) }
+            }
+        }
     }
 
     private fun loadActiveList() {
@@ -170,10 +184,15 @@ class HomeViewModel @Inject constructor(
                         list.sortedWith(compareBy({ it.isBought }, { it.priority.ordinal }))
                     }
                 val pending = items.filter { it.pendingRefill }
+                val duplicates = activeItems
+                    .filter { !it.isBought }
+                    .groupBy { ItemNameKey.of(it.name) }
+                    .filter { it.value.size >= 2 }
                 _uiState.update { it.copy(
                     itemsByCategory = grouped,
                     pendingRefillItems = pending,
-                    totalItems = activeItems.size
+                    totalItems = activeItems.size,
+                    duplicateGroups = duplicates
                 )}
             }
         }
@@ -362,6 +381,24 @@ class HomeViewModel @Inject constructor(
     }
 
     fun dismissQuickAddDuplicate() = _uiState.update { it.copy(quickAddDuplicate = null) }
+
+    // ──── מיזוג כפילויות ────
+
+    fun mergeDuplicates(nameKey: String) {
+        val group = _uiState.value.duplicateGroups[nameKey] ?: return
+        val pref = _uiState.value.mergeUnitPreference
+        viewModelScope.launch {
+            try {
+                itemRepository.mergeDuplicates(group, pref)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "המיזוג נכשל, נסה שוב") }
+            }
+        }
+    }
+
+    fun setMergeUnitPreference(value: String) {
+        viewModelScope.launch { listRepository.setMergeUnitPreference(value) }
+    }
 
     private fun resetQuickAdd() {
         _uiState.update { it.copy(

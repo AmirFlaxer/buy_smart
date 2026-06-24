@@ -31,4 +31,9 @@ interface ListRepository {
     suspend fun getPendingJoin(): Pair<String, String>?
     suspend fun setPendingJoin(listId: String, listName: String)
     suspend fun clearPendingJoin()
+
+    // ──── העדפת יחידה למיזוג כפילויות (DataStore) ────
+    /** "WEIGHT" (ברירת מחדל) או "COUNT". */
+    fun getMergeUnitPreference(): kotlinx.coroutines.flow.Flow<String>
+    suspend fun setMergeUnitPreference(value: String)
 }

@@ -84,3 +84,16 @@
 ### ✅ פרודקשן (בוצע 2026-06-10)
 - ✅ `firebase deploy --only firestore:rules` - תיקוני האבטחה (Vuln 1+2) פעילים בשרת
 - ✅ APK 1.2 (versionCode 3) הופץ לבודקים דרך App Distribution (iris.ynet@gmail.com)
+
+---
+
+## ✅ מיזוג פריטים כפולים בין משתמשים (2026-06-17)
+
+כששני משתמשים מוסיפים אותו פריט (race condition) נוצרות שתי שורות. הפיצ'ר מזהה כפילויות (שם מנורמל זהה), מדגיש אותן, ומציע מיזוג ידני לשורה אחת.
+
+- ✅ רכיבי לוגיקה טהורים ב-`domain/util`: `ItemNameKey` (נרמול), `QuantityMerge` (כמות הגדולה; משקל/ספירה לפי העדפה), `ItemMerge` (שילוב הערות, עדיפות גבוהה, RECURRING גובר). 20 unit tests.
+- ✅ `FirestoreService.mergeItemsBatch` - WriteBatch אטומי (עדכון שורד + מחיקת מיותרים)
+- ✅ העדפת יחידה (משקל/ספירה) ב-DataStore (`merge_unit_preference`), הגדרה בתפריט overflow
+- ✅ HomeViewModel מזהה קבוצות כפילות בכל snapshot (פריטים לא-נקנו), HomeScreen מדגיש (errorContainer) + כפתור "מזג"
+- ⏳ בדיקה ידנית במכשיר ממתינה. הפיצ'ר ב-branch `feature/merge-duplicates` (טרם מוזג ל-master)
+- מסמך עיצוב: `docs/superpowers/specs/2026-06-17-merge-duplicates-design.md`

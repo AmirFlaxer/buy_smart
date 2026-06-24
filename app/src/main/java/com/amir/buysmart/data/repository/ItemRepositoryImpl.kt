@@ -10,6 +10,8 @@ import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
+import com.amir.buysmart.domain.util.ItemMerge
+import com.amir.buysmart.domain.util.UnitType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
@@ -82,5 +84,14 @@ class ItemRepositoryImpl @Inject constructor(
     override suspend fun approvePendingRefill(item: ShoppingItem) {
         firestoreService.setPendingRefill(item.id, item.listId, false)
         itemDao.setPendingRefillAndResetBought(item.id, false)
+    }
+
+    override suspend fun mergeDuplicates(group: List<ShoppingItem>, unitPreference: String) {
+        if (group.size < 2) return
+        val pref = if (unitPreference == "COUNT") UnitType.COUNT else UnitType.WEIGHT
+        val result = ItemMerge.merge(group, pref)
+        firestoreService.mergeItemsBatch(group.first().listId, result.survivor, result.deleteIds)
+        itemDao.deleteItemsByIds(result.deleteIds)
+        itemDao.updateItem(ShoppingItemEntity.fromDomain(result.survivor))
     }
 }
