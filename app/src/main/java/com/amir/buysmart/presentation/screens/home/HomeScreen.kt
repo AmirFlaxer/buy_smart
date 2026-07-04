@@ -2,6 +2,7 @@ package com.amir.buysmart.presentation.screens.home
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -56,6 +57,7 @@ import com.amir.buysmart.presentation.components.VoiceInputButton
 import com.amir.buysmart.presentation.theme.BrandLogoEnd
 import com.amir.buysmart.presentation.theme.BrandLogoStart
 import com.amir.buysmart.presentation.theme.BrandSpark
+import com.amir.buysmart.presentation.theme.categoryTint
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -474,48 +476,61 @@ private fun PendingRefillSection(
                 )
             }
             groupedItems.forEach { (locationKey, groupItems) ->
-                Text(
-                    "${locationKey.emoji} ${locationKey.displayName} (${groupItems.size})",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                groupItems.forEach { item ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // כל קבוצת קטגוריה במשטח צבעוני עם מסגרת - כמו הרשימות הראשיות
+                val tint = categoryTint(locationKey)
+                Surface(
+                    color = tint.container,
+                    border = BorderStroke(1.dp, tint.border),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            if (item.note.isNotBlank()) {
-                                Text(
-                                    text = item.note,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilledTonalButton(
-                                onClick = { onApprove(item) },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        Text(
+                            "${locationKey.emoji} ${locationKey.displayName} (${groupItems.size})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        groupItems.forEach { item ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
-                            }
-                            IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(48.dp)) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "מחק",
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (item.note.isNotBlank()) {
+                                        Text(
+                                            text = item.note,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    FilledTonalButton(
+                                        onClick = { onApprove(item) },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(48.dp)) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "מחק",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

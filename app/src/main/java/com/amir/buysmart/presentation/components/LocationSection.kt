@@ -1,5 +1,6 @@
 package com.amir.buysmart.presentation.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.util.ItemNameKey
+import com.amir.buysmart.presentation.theme.categoryTint
 import com.amir.buysmart.presentation.theme.priorityTint
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,10 +35,13 @@ fun LocationSection(
     onMergeDuplicates: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // רקע + מסגרת בגוון ייחודי לקטגוריה - מבליט את המעבר בין הרשימות
+    val tint = categoryTint(key)
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = tint.container),
+        border = BorderStroke(1.5.dp, tint.border)
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -63,6 +68,7 @@ fun LocationSection(
                         onEdit = { onEditItem(item) },
                         isDuplicate = duplicateNameKeys.contains(nameKey),
                         onMerge = { onMergeDuplicates(nameKey) },
+                        defaultBg = tint.container,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
@@ -79,6 +85,7 @@ private fun SwipeableItemRow(
     onEdit: () -> Unit,
     isDuplicate: Boolean = false,
     onMerge: () -> Unit = {},
+    defaultBg: Color = Color.Unspecified,
     modifier: Modifier = Modifier
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
@@ -114,7 +121,7 @@ private fun SwipeableItemRow(
             }
         }
     ) {
-        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit, isDuplicate = isDuplicate, onMerge = onMerge)
+        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit, isDuplicate = isDuplicate, onMerge = onMerge, defaultBg = defaultBg)
     }
 }
 
@@ -125,10 +132,13 @@ fun ItemRow(
     onEdit: () -> Unit = {},
     isDuplicate: Boolean = false,
     onMerge: () -> Unit = {},
+    defaultBg: Color = Color.Unspecified,
     modifier: Modifier = Modifier
 ) {
+    // ברירת מחדל: רקע הקטגוריה (שורה "שטוחה"); דחיפות/כפילות דורסות
+    val fallback = if (defaultBg == Color.Unspecified) MaterialTheme.colorScheme.surfaceVariant else defaultBg
     val bgColor = if (isDuplicate) MaterialTheme.colorScheme.errorContainer
-                  else priorityTint(item.priority) ?: MaterialTheme.colorScheme.surfaceVariant
+                  else priorityTint(item.priority) ?: fallback
     Row(
         modifier
             .fillMaxWidth()

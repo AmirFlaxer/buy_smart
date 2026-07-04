@@ -4,6 +4,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.amir.buysmart.domain.model.ItemPriority
+import com.amir.buysmart.domain.model.LocationKey
+import com.amir.buysmart.domain.model.ShoppingLocation
 
 // ───────────────────────── BuySmart - פלטת צבעים ─────────────────────────
 // ערכה מלאה הנגזרת מהמותג הירוק (#2E7D32), כדי שאף תפקיד צבע לא ייפול
@@ -95,3 +97,39 @@ fun priorityTint(priority: ItemPriority): Color? {
 val BrandLogoStart = Color(0xFF43A047)
 val BrandLogoEnd = Color(0xFF1B5E20)
 val BrandSpark = Color(0xFFFFD740)
+
+// ---- צבעי קטגוריה (רקע + מסגרת של כרטיס רשימה) ----
+// כל קטגוריה מקבלת גוון קבוע משלה כדי שהמעבר בין רשימות יהיה ברור.
+
+/** צמד צבעים לכרטיס קטגוריה: רקע עדין + מסגרת באותו גוון. */
+data class CategoryTint(val container: Color, val border: Color)
+
+// (רקע בהיר, מסגרת בהירה, רקע כהה, מסגרת כהה) לכל קטגוריה מובנית
+private val BuiltInTints = mapOf(
+    ShoppingLocation.SUPERMARKET to listOf(Color(0xFFE1F0DF), Color(0xFF7CB342), Color(0xFF20301E), Color(0xFF4E6B45)),
+    ShoppingLocation.DELI to listOf(Color(0xFFFFEBDD), Color(0xFFE8955C), Color(0xFF3A2A1E), Color(0xFF7A5638)),
+    ShoppingLocation.GREENGROCER to listOf(Color(0xFFDCF2EE), Color(0xFF4DB6AC), Color(0xFF1C332F), Color(0xFF3E6B64)),
+    ShoppingLocation.PHARMACY to listOf(Color(0xFFE0EDF9), Color(0xFF64A0D8), Color(0xFF1F2C3A), Color(0xFF456580)),
+    ShoppingLocation.BAKERY to listOf(Color(0xFFF8EEDA), Color(0xFFD4A94F), Color(0xFF362F1E), Color(0xFF77683C)),
+    ShoppingLocation.OTHER to listOf(Color(0xFFECEAE6), Color(0xFFA8A296), Color(0xFF2B2B28), Color(0xFF5E5B52))
+)
+
+// גוונים לקטגוריות מותאמות אישית - נבחרים לפי hash של השם (יציב לאותו שם)
+private val CustomTints = listOf(
+    listOf(Color(0xFFEFE6F7), Color(0xFFA678D0), Color(0xFF2E2438), Color(0xFF66507D)), // סגול
+    listOf(Color(0xFFFAE4EC), Color(0xFFD87FA5), Color(0xFF38242C), Color(0xFF7D4E63)), // ורוד
+    listOf(Color(0xFFDFF1F6), Color(0xFF5FB4CB), Color(0xFF1E3136), Color(0xFF44707E)), // תכלת
+    listOf(Color(0xFFE6E9F9), Color(0xFF7986CB), Color(0xFF252838), Color(0xFF4F577D))  // אינדיגו
+)
+
+/** צבעי הכרטיס של קטגוריה - קבועים לקטגוריה, מותאמים למצב בהיר/כהה. */
+@Composable
+fun categoryTint(key: LocationKey): CategoryTint {
+    val dark = isSystemInDarkTheme()
+    val tints = when (key) {
+        is LocationKey.BuiltIn -> BuiltInTints.getValue(key.location)
+        is LocationKey.Custom -> CustomTints[Math.abs(key.name.hashCode()) % CustomTints.size]
+    }
+    return if (dark) CategoryTint(container = tints[2], border = tints[3])
+           else CategoryTint(container = tints[0], border = tints[1])
+}
