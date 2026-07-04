@@ -5,4 +5,8 @@ object ItemNameKey {
     private val multiSpace = Regex("\\s+")
     fun of(name: String): String =
         name.trim().lowercase().replace(multiSpace, " ")
+
+    /** נרמול לשמירה: trim + רווח יחיד, בלי שינוי אותיות. */
+    fun collapseSpaces(name: String): String =
+        name.trim().replace(multiSpace, " ")
 }

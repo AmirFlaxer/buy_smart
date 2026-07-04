@@ -20,4 +20,10 @@ class ItemNameKeyTest {
     fun `equal names produce equal keys`() {
         assertEquals(ItemNameKey.of("חלב "), ItemNameKey.of("חלב"))
     }
+
+    @Test
+    fun `collapseSpaces keeps case but normalizes whitespace`() {
+        assertEquals("חלב עיזים", ItemNameKey.collapseSpaces(" חלב   עיזים "))
+        assertEquals("MILK Fresh", ItemNameKey.collapseSpaces("MILK  Fresh"))
+    }
 }

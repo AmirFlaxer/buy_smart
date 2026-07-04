@@ -184,9 +184,10 @@ class HomeViewModel @Inject constructor(
                         list.sortedWith(compareBy({ it.isBought }, { it.priority.ordinal }))
                     }
                 val pending = items.filter { it.pendingRefill }
+                // כפילות = אותו שם באותה קטגוריה. אותו שם בקטגוריות שונות הוא שני צרכים שונים
                 val duplicates = activeItems
                     .filter { !it.isBought }
-                    .groupBy { ItemNameKey.of(it.name) }
+                    .groupBy { "${it.categoryKey}|${ItemNameKey.of(it.name)}" }
                     .filter { it.value.size >= 2 }
                 _uiState.update { it.copy(
                     itemsByCategory = grouped,
@@ -226,7 +227,8 @@ class HomeViewModel @Inject constructor(
                 quickAddLocation = when {
                     state.quickAddLocationManuallySet -> state.quickAddLocation
                     hintsLoc != null -> hintsLoc
-                    else -> ShoppingLocation.SUPERMARKET
+                    // אין hint — לא לדרוס סיווג שכבר בוצע (Gemini/היסטוריה)
+                    else -> state.quickAddLocation
                 }
             )
         }
@@ -316,7 +318,7 @@ class HomeViewModel @Inject constructor(
 
         // כפילות נבדקת גם מול אזור "לחידוש" — שם הדיאלוג מציע להחזיר במקום להוסיף כפול
         val duplicate = (state.itemsByCategory.values.flatten() + state.pendingRefillItems)
-            .firstOrNull { it.name.trim().equals(state.quickAddName.trim(), ignoreCase = true) }
+            .firstOrNull { ItemNameKey.of(it.name) == ItemNameKey.of(state.quickAddName) }
         if (duplicate != null) {
             _uiState.update { it.copy(quickAddDuplicate = duplicate) }
             return
@@ -328,7 +330,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 addItemUseCase(ShoppingItem(
-                    name = state.quickAddName.trim(),
+                    name = ItemNameKey.collapseSpaces(state.quickAddName),
                     note = state.quickAddNote.trim(),
                     location = state.quickAddLocation,
                     customLocation = state.quickAddCustomLocation,
@@ -359,8 +361,12 @@ class HomeViewModel @Inject constructor(
         val duplicate = state.quickAddDuplicate ?: return
         val newQty = QuantityUtils.increment(duplicate.quantity)
         viewModelScope.launch {
-            itemRepository.updateItem(duplicate.copy(quantity = newQty))
-            resetQuickAdd()
+            try {
+                itemRepository.updateItem(duplicate.copy(quantity = newQty))
+                resetQuickAdd()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "העדכון נכשל, נסה שוב") }
+            }
         }
     }
 
@@ -368,8 +374,24 @@ class HomeViewModel @Inject constructor(
     fun restoreFromPendingRefillDuplicate() {
         val duplicate = _uiState.value.quickAddDuplicate ?: return
         viewModelScope.launch {
-            itemRepository.approvePendingRefill(duplicate)
-            resetQuickAdd()
+            try {
+                restorePendingItem(duplicate)
+                resetQuickAdd()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "ההחזרה לרשימה נכשלה, נסה שוב") }
+            }
+        }
+    }
+
+    /**
+     * מחזיר פריט מ"לחידוש" לרשימה, ומרפא קטגוריה יתומה: אם הקטגוריה המותאמת
+     * של הפריט נמחקה בינתיים (למשל בדיאלוג שאחרי סיום קנייה) — מוסיף אותה חזרה,
+     * אחרת הפריט חוזר לקטגוריה שאי אפשר לבחור באף מסך.
+     */
+    private suspend fun restorePendingItem(item: ShoppingItem) {
+        itemRepository.approvePendingRefill(item)
+        if (item.customLocation.isNotBlank()) {
+            listRepository.addCustomLocation(item.listId, item.customLocation)
         }
     }
 
@@ -415,6 +437,16 @@ class HomeViewModel @Inject constructor(
     }
 
     // ──── הצטרפות / אישור / עזיבה ────
+
+    // קוד הזמנה מקישור שכבר טופל — מניעת בקשה חוזרת בכל חזרה למסך הבית
+    private var handledInviteCode: String? = null
+
+    /** הצטרפות מקישור עומק — מטופלת פעם אחת בלבד לכל קוד, גם אם המסך נבנה מחדש. */
+    fun joinListFromLink(code: String) {
+        if (code == handledInviteCode) return
+        handledInviteCode = code
+        joinList(code)
+    }
 
     /** מבקש להצטרף לרשימה לפי קוד — נכנס למצב "ממתין לאישור" (אלא אם כבר חבר). */
     fun joinList(code: String) {
@@ -544,14 +576,22 @@ class HomeViewModel @Inject constructor(
         val trimmed = name.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
-            listRepository.addCustomLocation(listId, trimmed)
+            try {
+                listRepository.addCustomLocation(listId, trimmed)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "הוספת הקטגוריה נכשלה, נסה שוב") }
+            }
         }
     }
 
     fun removeCustomLocation(name: String) {
         val listId = _uiState.value.activeList?.id ?: return
         viewModelScope.launch {
-            listRepository.removeCustomLocation(listId, name)
+            try {
+                listRepository.removeCustomLocation(listId, name)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "מחיקת הקטגוריה נכשלה, נסה שוב") }
+            }
         }
     }
 
@@ -559,21 +599,37 @@ class HomeViewModel @Inject constructor(
 
     fun deleteItem(itemId: String) {
         val listId = _uiState.value.activeList?.id ?: return
-        viewModelScope.launch { deleteItemUseCase(itemId, listId) }
+        viewModelScope.launch {
+            try {
+                deleteItemUseCase(itemId, listId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "המחיקה נכשלה, נסה שוב") }
+            }
+        }
     }
 
     fun deleteItemWithUndo(item: ShoppingItem) {
         val listId = _uiState.value.activeList?.id ?: return
         _uiState.update { it.copy(recentlyDeleted = item) }
-        viewModelScope.launch { deleteItemUseCase(item.id, listId) }
+        viewModelScope.launch {
+            try {
+                deleteItemUseCase(item.id, listId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(recentlyDeleted = null, errorMessage = "המחיקה נכשלה, נסה שוב") }
+            }
+        }
     }
 
     fun undoDelete() {
         val item = _uiState.value.recentlyDeleted ?: return
         _uiState.update { it.copy(recentlyDeleted = null) }
         viewModelScope.launch {
-            // התמונה (base64) שמורה בתוך הפריט עצמו, כך שהיא משוחזרת יחד איתו
-            addItemUseCase(item.copy(id = ""))
+            try {
+                // התמונה (base64) שמורה בתוך הפריט עצמו, כך שהיא משוחזרת יחד איתו
+                addItemUseCase(item.copy(id = ""))
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "השחזור נכשל, נסה שוב") }
+            }
         }
     }
 
@@ -623,11 +679,15 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(editingItem = it.editingItem?.copy(priority = priority)) }
 
     fun onEditImagePicked(context: Context, uri: Uri) {
+        // לוכדים את זהות הפריט הנערך — אם המשתמש עבר לערוך פריט אחר לפני שהקידוד
+        // הסתיים, אסור להדביק עליו את התמונה של הפריט הקודם
+        val editedItemId = _uiState.value.editingItem?.id ?: return
         _uiState.update { it.copy(editPendingImageUri = uri, editIsUploadingImage = true) }
         viewModelScope.launch {
             // התמונה מקודדת ל-base64 ונשמרת ישירות במסמך הפריט ב-Firestore
             val encoded = imageUploader.encodeItemImage(context, uri)
             _uiState.update { state ->
+                if (state.editingItem?.id != editedItemId) return@update state
                 state.copy(
                     editingItem = if (encoded != null) state.editingItem?.copy(imageUrl = encoded) else state.editingItem,
                     editPendingImageUri = if (encoded != null) null else state.editPendingImageUri,
@@ -647,7 +707,13 @@ class HomeViewModel @Inject constructor(
     }
 
     fun approvePendingRefill(item: ShoppingItem) {
-        viewModelScope.launch { itemRepository.approvePendingRefill(item) }
+        viewModelScope.launch {
+            try {
+                restorePendingItem(item)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "ההחזרה לרשימה נכשלה, נסה שוב") }
+            }
+        }
     }
 
     fun saveEdit() {
@@ -658,7 +724,13 @@ class HomeViewModel @Inject constructor(
             editPendingImageUri = null,
             editIsUploadingImage = false
         )}
-        viewModelScope.launch { itemRepository.updateItem(item) }
+        viewModelScope.launch {
+            try {
+                itemRepository.updateItem(item)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "שמירת השינויים נכשלה, נסה שוב") }
+            }
+        }
     }
 
     fun dismissEdit() = _uiState.update { it.copy(

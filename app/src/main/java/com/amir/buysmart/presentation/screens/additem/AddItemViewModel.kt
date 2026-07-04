@@ -15,6 +15,7 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.repository.ListRepository
 import com.amir.buysmart.domain.usecase.AddItemUseCase
+import com.amir.buysmart.domain.util.ItemNameKey
 import com.google.firebase.auth.FirebaseAuth
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -44,7 +45,9 @@ data class AddItemUiState(
     val imageUrl: String = "",
     /** Uri מקומי בזמן העלאה — לתצוגה מקדימה */
     val pendingImageUri: Uri? = null,
-    val isUploadingImage: Boolean = false
+    val isUploadingImage: Boolean = false,
+    /** הודעת שגיאה חד-פעמית להצגה ב-Snackbar */
+    val errorMessage: String? = null
 ) {
     val selectedKey: LocationKey
         get() = if (customLocation.isNotBlank()) LocationKey.Custom(customLocation)
@@ -175,14 +178,22 @@ class AddItemViewModel @Inject constructor(
         val trimmed = name.trim()
         if (trimmed.isBlank() || listId.isBlank()) return
         viewModelScope.launch {
-            listRepository.addCustomLocation(listId, trimmed)
+            try {
+                listRepository.addCustomLocation(listId, trimmed)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "הוספת הקטגוריה נכשלה, נסה שוב") }
+            }
         }
     }
 
     fun removeCustomLocation(name: String) {
         if (listId.isBlank()) return
         viewModelScope.launch {
-            listRepository.removeCustomLocation(listId, name)
+            try {
+                listRepository.removeCustomLocation(listId, name)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "מחיקת הקטגוריה נכשלה, נסה שוב") }
+            }
         }
     }
 
@@ -211,7 +222,7 @@ class AddItemViewModel @Inject constructor(
         if (state.name.isBlank()) return
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
-            val duplicate = itemRepository.getItemByName(state.name.trim(), listId)
+            val duplicate = itemRepository.getItemByName(ItemNameKey.collapseSpaces(state.name), listId)
             if (duplicate != null) {
                 _uiState.update { it.copy(isSaving = false, duplicateItem = duplicate) }
                 return@launch
@@ -226,12 +237,33 @@ class AddItemViewModel @Inject constructor(
         viewModelScope.launch { doSave(listId, state) }
     }
 
+    /** הפריט הכפול ממתין "לחידוש" — מחזיר אותו לרשימה הפעילה במקום ליצור כפול. */
+    fun restoreFromPendingRefillDuplicate() {
+        val duplicate = _uiState.value.duplicateItem ?: return
+        viewModelScope.launch {
+            try {
+                itemRepository.approvePendingRefill(duplicate)
+                // ריפוי קטגוריה יתומה — אם הקטגוריה המותאמת של הפריט נמחקה בינתיים
+                if (duplicate.customLocation.isNotBlank()) {
+                    listRepository.addCustomLocation(duplicate.listId, duplicate.customLocation)
+                }
+                _uiState.update { it.copy(saved = true, duplicateItem = null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "ההחזרה לרשימה נכשלה, נסה שוב") }
+            }
+        }
+    }
+
     fun increaseQuantityOfDuplicate() {
         val duplicate = _uiState.value.duplicateItem ?: return
         val newQty = incrementQuantity(duplicate.quantity)
         viewModelScope.launch {
-            itemRepository.updateItem(duplicate.copy(quantity = newQty))
-            _uiState.update { it.copy(saved = true, duplicateItem = null) }
+            try {
+                itemRepository.updateItem(duplicate.copy(quantity = newQty))
+                _uiState.update { it.copy(saved = true, duplicateItem = null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "העדכון נכשל, נסה שוב") }
+            }
         }
     }
 
@@ -247,28 +279,34 @@ class AddItemViewModel @Inject constructor(
     private suspend fun doSave(listId: String, state: AddItemUiState) {
         val displayName = auth.currentUser?.displayName
             ?: auth.currentUser?.email?.substringBefore("@") ?: ""
-        addItemUseCase(ShoppingItem(
-            name = state.name.trim(),
-            quantity = state.quantity.trim(),
-            note = state.note.trim(),
-            location = state.location,
-            customLocation = state.customLocation,
-            type = state.type,
-            priority = state.priority,
-            addedBy = auth.currentUser?.uid ?: "",
-            addedByName = displayName,
-            listId = listId,
-            imageUrl = state.imageUrl
-        ))
-        // saveHistory רק לקטגוריה מובנית
-        if (state.customLocation.isBlank()) {
-            itemRepository.saveHistory(
-                state.name.trim(),
-                state.location,
-                state.note.trim(),
-                state.quantity.trim()
-            )
+        try {
+            addItemUseCase(ShoppingItem(
+                name = ItemNameKey.collapseSpaces(state.name),
+                quantity = state.quantity.trim(),
+                note = state.note.trim(),
+                location = state.location,
+                customLocation = state.customLocation,
+                type = state.type,
+                priority = state.priority,
+                addedBy = auth.currentUser?.uid ?: "",
+                addedByName = displayName,
+                listId = listId,
+                imageUrl = state.imageUrl
+            ))
+            // saveHistory רק לקטגוריה מובנית
+            if (state.customLocation.isBlank()) {
+                itemRepository.saveHistory(
+                    ItemNameKey.collapseSpaces(state.name),
+                    state.location,
+                    state.note.trim(),
+                    state.quantity.trim()
+                )
+            }
+            _uiState.update { it.copy(saved = true, isSaving = false) }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(isSaving = false, errorMessage = "הוספת הפריט נכשלה, נסה שוב") }
         }
-        _uiState.update { it.copy(saved = true, isSaving = false) }
     }
+
+    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 }

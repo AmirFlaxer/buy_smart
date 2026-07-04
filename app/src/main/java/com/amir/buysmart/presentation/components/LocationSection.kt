@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,15 +53,19 @@ fun LocationSection(
             }
             Spacer(Modifier.height(8.dp))
             items.forEach { item ->
-                val nameKey = ItemNameKey.of(item.name)
-                SwipeableItemRow(
-                    item = item,
-                    onDelete = { onDeleteItem(item) },
-                    onEdit = { onEditItem(item) },
-                    isDuplicate = duplicateNameKeys.contains(nameKey),
-                    onMerge = { onMergeDuplicates(nameKey) },
-                    modifier = Modifier.padding(vertical = 2.dp)
-                )
+                // מפתח הכפילות כולל את הקטגוריה — תואם ל-duplicateGroups ב-HomeViewModel
+                val nameKey = "${key.key}|${ItemNameKey.of(item.name)}"
+                // key(item.id) — כדי ש-state של swipe לא "יעבור" לפריט אחר כשהסדר משתנה
+                key(item.id) {
+                    SwipeableItemRow(
+                        item = item,
+                        onDelete = { onDeleteItem(item) },
+                        onEdit = { onEditItem(item) },
+                        isDuplicate = duplicateNameKeys.contains(nameKey),
+                        onMerge = { onMergeDuplicates(nameKey) },
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
             }
         }
     }

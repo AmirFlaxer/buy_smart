@@ -18,6 +18,7 @@ import com.amir.buysmart.presentation.components.ImagePickerButton
 import com.amir.buysmart.presentation.components.ItemImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -61,6 +62,7 @@ import com.amir.buysmart.presentation.theme.BrandSpark
 fun HomeScreen(
     onAddItem: (String) -> Unit,
     onGoShopping: (String) -> Unit,
+    onOpenHelp: () -> Unit = {},
     inviteCodeFromLink: String? = null,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -97,7 +99,8 @@ fun HomeScreen(
 
     LaunchedEffect(inviteCodeFromLink) {
         if (!inviteCodeFromLink.isNullOrBlank()) {
-            viewModel.joinList(inviteCodeFromLink)
+            // מטופל פעם אחת ב-ViewModel — לא נשלחת בקשה חוזרת בכל חזרה למסך
+            viewModel.joinListFromLink(inviteCodeFromLink)
         }
     }
 
@@ -163,6 +166,14 @@ fun HomeScreen(
                                 )
                                 HorizontalDivider()
                             }
+                            DropdownMenuItem(
+                                text = { Text("מדריך מהיר") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    onOpenHelp()
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("הצטרף לרשימה") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
@@ -306,7 +317,7 @@ fun HomeScreen(
                     if (existing.pendingRefill)
                         "${existing.name}$qtyText נמצא באזור \"לחידוש\".\nלהחזיר אותו לרשימה?"
                     else
-                        "${existing.name}$qtyText כבר קיים ב${existing.location.displayName}.\nמה לעשות?"
+                        "${existing.name}$qtyText כבר קיים ב${LocationKey.fromItem(existing).displayName}.\nמה לעשות?"
                 )
             },
             confirmButton = {
@@ -436,6 +447,15 @@ private fun PendingRefillSection(
     onApprove: (ShoppingItem) -> Unit,
     onDelete: (String) -> Unit
 ) {
+    // קיבוץ לפי קטגוריה: מובנות לפי סדר קבוע, מותאמות אחריהן לפי שם
+    val groupedItems = items
+        .groupBy { LocationKey.fromItem(it) }
+        .entries
+        .sortedWith(compareBy(
+            { it.key.isCustom },
+            { (it.key as? LocationKey.BuiltIn)?.location?.ordinal ?: 0 },
+            { it.key.displayName }
+        ))
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
@@ -453,41 +473,50 @@ private fun PendingRefillSection(
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                 )
             }
-            items.forEach { item ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        if (item.note.isNotBlank()) {
+            groupedItems.forEach { (locationKey, groupItems) ->
+                Text(
+                    "${locationKey.emoji} ${locationKey.displayName} (${groupItems.size})",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                groupItems.forEach { item ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                text = item.note,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
+                                style = MaterialTheme.typography.bodyMedium
                             )
+                            if (item.note.isNotBlank()) {
+                                Text(
+                                    text = item.note,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
                         }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalButton(
-                            onClick = { onApprove(item) },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
-                        }
-                        IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(48.dp)) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "מחק",
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
-                                modifier = Modifier.size(18.dp)
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilledTonalButton(
+                                onClick = { onApprove(item) },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("הוסף שוב", style = MaterialTheme.typography.labelMedium)
+                            }
+                            IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(48.dp)) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "מחק",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

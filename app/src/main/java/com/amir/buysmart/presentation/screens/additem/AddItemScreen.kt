@@ -39,9 +39,15 @@ fun AddItemScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showAddCustomDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(listId) { viewModel.setListId(listId) }
     LaunchedEffect(state.saved) { if (state.saved) onBack() }
+    LaunchedEffect(state.errorMessage) {
+        val message = state.errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+        viewModel.clearError()
+    }
 
     if (showAddCustomDialog) {
         AddCustomLocationDialog(
@@ -54,17 +60,28 @@ fun AddItemScreen(
         )
     }
 
-    // דיאלוג כפילות
+    // דיאלוג כפילות — פריט פעיל מציע "הגדל כמות", פריט שממתין לחידוש מציע "החזר לרשימה"
     state.duplicateItem?.let { existing ->
         AlertDialog(
             onDismissRequest = viewModel::dismissDuplicateDialog,
-            title = { Text("${existing.name} כבר ברשימה") },
+            title = {
+                Text(if (existing.pendingRefill) "${existing.name} ממתין לחידוש" else "${existing.name} כבר ברשימה")
+            },
             text = {
                 val qtyText = if (existing.quantity.isNotBlank()) " (${existing.quantity})" else ""
-                Text("${existing.name}$qtyText כבר קיים ב${existing.location.displayName}.\nמה לעשות?")
+                Text(
+                    if (existing.pendingRefill)
+                        "${existing.name}$qtyText נמצא באזור \"לחידוש\".\nלהחזיר אותו לרשימה?"
+                    else
+                        "${existing.name}$qtyText כבר קיים ב${LocationKey.fromItem(existing).displayName}.\nמה לעשות?"
+                )
             },
             confirmButton = {
-                Button(onClick = viewModel::increaseQuantityOfDuplicate) { Text("הגדל כמות") }
+                if (existing.pendingRefill) {
+                    Button(onClick = viewModel::restoreFromPendingRefillDuplicate) { Text("החזר לרשימה") }
+                } else {
+                    Button(onClick = viewModel::increaseQuantityOfDuplicate) { Text("הגדל כמות") }
+                }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -76,6 +93,7 @@ fun AddItemScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("הוסף פריט") },
@@ -169,6 +187,10 @@ fun AddItemScreen(
             val selectedParts = state.note.split(", ").map { it.trim() }.filter { it.isNotBlank() }
             val freeText = selectedParts.filter { it !in presets }.joinToString(", ")
             var freeNoteInput by remember { mutableStateOf(freeText) }
+            // סנכרון משינוי חיצוני (הערה שנטענה מהיסטוריה) — שינוי שמקורו בשדה עצמו כבר שווה
+            LaunchedEffect(freeText) {
+                if (freeText != freeNoteInput) freeNoteInput = freeText
+            }
             OutlinedTextField(
                 value = freeNoteInput,
                 onValueChange = { input ->

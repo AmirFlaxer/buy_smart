@@ -198,12 +198,16 @@ class FirestoreService @Inject constructor(
                 .whereEqualTo("customLocation", customName)
                 .whereEqualTo("isBought", true)
         } else {
+            // בלי whereEqualTo על customLocation: מסמכים ישנים (לפני פיצ'ר הקטגוריות
+            // המותאמות) חסרים את השדה, ו-Firestore לא מחזיר אותם על שוויון ל-"".
+            // הסינון נעשה בזיכרון אחרי הפענוח (toShoppingItem משלים "" כברירת מחדל)
             itemsCollection(listId)
                 .whereEqualTo("location", categoryKey)
-                .whereEqualTo("customLocation", "")
                 .whereEqualTo("isBought", true)
         }
-        return query.get().await().documents.mapNotNull { it.toShoppingItem(listId) }
+        return query.get().await().documents
+            .mapNotNull { it.toShoppingItem(listId) }
+            .filter { isCustom || it.customLocation.isEmpty() }
     }
 
     fun getUserLists(userId: String): Flow<List<ShoppingList>> = callbackFlow {

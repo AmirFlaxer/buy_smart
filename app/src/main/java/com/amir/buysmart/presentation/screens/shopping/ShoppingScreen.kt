@@ -31,11 +31,18 @@ fun ShoppingScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showFinishDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(listId) { viewModel.init(listId) }
     LaunchedEffect(state.finished) { if (state.finished) onBack() }
+    LaunchedEffect(state.errorMessage) {
+        val message = state.errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+        viewModel.clearError()
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("🛒 יוצא לקניות") },

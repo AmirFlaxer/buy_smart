@@ -49,7 +49,8 @@ interface ItemDao {
     @Update
     suspend fun updateItem(item: ShoppingItemEntity)
 
-    @Query("SELECT * FROM shopping_items WHERE listId = :listId AND LOWER(name) = LOWER(:name) LIMIT 1")
+    // פריט פעיל מועדף על פני פריט שממתין "לחידוש" — עקבי עם בדיקת הכפילות במסך הבית
+    @Query("SELECT * FROM shopping_items WHERE listId = :listId AND LOWER(name) = LOWER(:name) ORDER BY pendingRefill ASC LIMIT 1")
     suspend fun getItemByName(name: String, listId: String): ShoppingItemEntity?
 
     @Query("UPDATE shopping_items SET pendingRefill = :pendingRefill, isBought = 0 WHERE id = :id")

@@ -8,6 +8,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.amir.buysmart.presentation.screens.additem.AddItemScreen
 import com.amir.buysmart.presentation.screens.auth.AuthScreen
+import com.amir.buysmart.presentation.screens.help.HelpScreen
 import com.amir.buysmart.presentation.screens.home.HomeScreen
 import com.amir.buysmart.presentation.screens.shopping.ShoppingScreen
 
@@ -16,6 +17,7 @@ private object Routes {
     const val HOME = "home"
     const val ADD_ITEM = "add_item/{listId}"
     const val SHOPPING = "shopping/{listId}"
+    const val HELP = "help"
 
     fun addItem(listId: String) = "add_item/$listId"
     fun shopping(listId: String) = "shopping/$listId"
@@ -36,8 +38,13 @@ fun AppNavGraph(inviteCodeFromLink: String? = null) {
             HomeScreen(
                 onAddItem = { listId -> navController.navigate(Routes.addItem(listId)) },
                 onGoShopping = { listId -> navController.navigate(Routes.shopping(listId)) },
+                onOpenHelp = { navController.navigate(Routes.HELP) },
                 inviteCodeFromLink = inviteCodeFromLink
             )
+        }
+
+        composable(Routes.HELP) {
+            HelpScreen(onBack = { navController.popBackStack() })
         }
 
         composable(

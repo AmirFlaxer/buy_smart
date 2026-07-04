@@ -23,7 +23,9 @@ data class ShoppingUiState(
     val isLoading: Boolean = true,
     val finished: Boolean = false,
     /** קטגוריה מותאמת אישית שזה עתה הסתיימה — לשאלה אם למחוק */
-    val justFinishedCustom: String? = null
+    val justFinishedCustom: String? = null,
+    /** הודעת שגיאה חד-פעמית להצגה ב-Snackbar */
+    val errorMessage: String? = null
 )
 
 @HiltViewModel
@@ -84,14 +86,23 @@ class ShoppingViewModel @Inject constructor(
 
     fun toggleBought(item: ShoppingItem) {
         viewModelScope.launch {
-            toggleItemBought(item.id, currentListId, !item.isBought)
+            try {
+                toggleItemBought(item.id, currentListId, !item.isBought)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "העדכון נכשל, נסה שוב") }
+            }
         }
     }
 
     fun finishShopping() {
         viewModelScope.launch {
             val key = _uiState.value.selectedKey
-            finishShopping(currentListId, key.key)
+            try {
+                finishShopping(currentListId, key.key)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "סיום הקנייה נכשל, נסה שוב") }
+                return@launch
+            }
             // אם זו קטגוריה מותאמת — להציג שאלה למחוק לפני יציאה
             if (key is LocationKey.Custom) {
                 _uiState.update { it.copy(justFinishedCustom = key.name) }
@@ -104,10 +115,16 @@ class ShoppingViewModel @Inject constructor(
     fun confirmDeleteFinishedCustom() {
         val name = _uiState.value.justFinishedCustom ?: return
         viewModelScope.launch {
-            listRepository.removeCustomLocation(currentListId, name)
+            try {
+                listRepository.removeCustomLocation(currentListId, name)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "מחיקת הקטגוריה נכשלה") }
+            }
             _uiState.update { it.copy(justFinishedCustom = null, finished = true) }
         }
     }
+
+    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 
     fun dismissDeleteFinishedCustom() {
         _uiState.update { it.copy(justFinishedCustom = null, finished = true) }
