@@ -212,7 +212,8 @@ private fun ShoppingItemCard(item: ShoppingItem, onToggle: () -> Unit) {
                         .size(48.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .padding(end = 8.dp),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    expandable = true
                 )
             } else {
                 Spacer(Modifier.width(8.dp))

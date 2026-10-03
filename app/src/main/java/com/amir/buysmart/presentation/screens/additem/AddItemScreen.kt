@@ -24,6 +24,7 @@ import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.presentation.components.AddCustomLocationDialog
+import com.amir.buysmart.presentation.components.ImageEditActions
 import com.amir.buysmart.presentation.components.ImagePickerButton
 import com.amir.buysmart.presentation.components.ItemImage
 import com.amir.buysmart.presentation.components.LocationChipRow
@@ -260,7 +261,10 @@ fun AddItemScreen(
                             data = state.imageUrl,
                             contentDescription = "תמונת המוצר",
                             modifier = imageModifier,
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            expandable = true,
+                            onReplace = { uri -> viewModel.onImagePicked(context, uri) },
+                            onDelete = viewModel::removeImage
                         )
                     }
                     if (state.isUploadingImage) {
@@ -271,17 +275,12 @@ fun AddItemScreen(
                             CircularProgressIndicator()
                         }
                     }
-                    IconButton(
-                        onClick = viewModel::removeImage,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "הסר תמונה",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
+                ImageEditActions(
+                    onReplace = { uri -> viewModel.onImagePicked(context, uri) },
+                    onDelete = viewModel::removeImage,
+                    enabled = !state.isUploadingImage
+                )
             } else {
                 ImagePickerButton(
                     onImagePicked = { uri -> viewModel.onImagePicked(context, uri) },

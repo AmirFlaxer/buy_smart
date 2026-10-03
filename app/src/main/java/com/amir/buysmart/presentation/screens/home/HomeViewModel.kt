@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** "הוסף שוב" על פריט מ"לחידוש" שכבר נמצא ברשימה לקנייה (אותו שם, אותה קטגוריה). */
+data class RefillConflict(val refillItem: ShoppingItem, val activeItem: ShoppingItem)
+
 data class HomeUiState(
     val activeList: ShoppingList? = null,
     val itemsByCategory: Map<LocationKey, List<ShoppingItem>> = emptyMap(),
@@ -51,6 +54,7 @@ data class HomeUiState(
     val quickAddSuggestions: List<String> = emptyList(),
     val quickAddPresetNotes: List<String> = emptyList(),
     val quickAddDuplicate: ShoppingItem? = null,
+    val refillConflict: RefillConflict? = null,
     // עריכת פריט
     val editingItem: ShoppingItem? = null,
     val editPresetNotes: List<String> = emptyList(),
@@ -707,11 +711,83 @@ class HomeViewModel @Inject constructor(
     }
 
     fun approvePendingRefill(item: ShoppingItem) {
+        // אם אותו פריט כבר ברשימה לקנייה — לא ליצור כפילות; הדיאלוג מציע להגדיל כמות או להסיר מ"לחידוש"
+        val activeTwin = _uiState.value.itemsByCategory.values.flatten().firstOrNull {
+            it.categoryKey == item.categoryKey && ItemNameKey.of(it.name) == ItemNameKey.of(item.name)
+        }
+        if (activeTwin != null) {
+            _uiState.update { it.copy(refillConflict = RefillConflict(item, activeTwin)) }
+            return
+        }
         viewModelScope.launch {
             try {
                 restorePendingItem(item)
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "ההחזרה לרשימה נכשלה, נסה שוב") }
+            }
+        }
+    }
+
+    /** מגדיל את כמות הפריט שכבר ברשימה, ומוריד את העותק המיותר מ"לחידוש". */
+    fun increaseQuantityFromRefillConflict() {
+        val conflict = _uiState.value.refillConflict ?: return
+        val listId = _uiState.value.activeList?.id ?: return
+        _uiState.update { it.copy(refillConflict = null) }
+        viewModelScope.launch {
+            try {
+                val active = conflict.activeItem
+                itemRepository.updateItem(active.copy(quantity = QuantityUtils.increment(active.quantity)))
+                deleteItemUseCase(conflict.refillItem.id, listId)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "העדכון נכשל, נסה שוב") }
+            }
+        }
+    }
+
+    /** הפריט כבר ברשימה — רק מוריד את העותק המיותר מ"לחידוש". */
+    fun removeRefillDuplicate() {
+        val conflict = _uiState.value.refillConflict ?: return
+        _uiState.update { it.copy(refillConflict = null) }
+        deleteItem(conflict.refillItem.id)
+    }
+
+    fun dismissRefillConflict() = _uiState.update { it.copy(refillConflict = null) }
+
+    // ──── החלפה/מחיקה של תמונה מהמסך המלא (נשמר מיד, בלי חלון "שינוי") ────
+
+    fun replaceItemImage(context: Context, item: ShoppingItem, uri: Uri) {
+        viewModelScope.launch {
+            val encoded = imageUploader.encodeItemImage(context, uri)
+            if (encoded == null) {
+                _uiState.update { it.copy(errorMessage = "עיבוד התמונה נכשל, נסה שוב") }
+                return@launch
+            }
+            saveItemImage(item.id, encoded)
+        }
+    }
+
+    fun removeItemImage(item: ShoppingItem) {
+        viewModelScope.launch { saveItemImage(item.id, "") }
+    }
+
+    private suspend fun saveItemImage(itemId: String, imageUrl: String) {
+        // הגרסה העדכנית מה-state — שלא נדרוס שינוי שחבר אחר עשה בזמן קידוד התמונה
+        val state = _uiState.value
+        val current = (state.itemsByCategory.values.flatten() + state.pendingRefillItems)
+            .firstOrNull { it.id == itemId } ?: return
+        try {
+            itemRepository.updateItem(current.copy(imageUrl = imageUrl))
+        } catch (e: Exception) {
+            _uiState.update { it.copy(errorMessage = "שמירת התמונה נכשלה, נסה שוב") }
+        }
+    }
+
+    fun moveToPendingRefill(item: ShoppingItem) {
+        viewModelScope.launch {
+            try {
+                itemRepository.moveToPendingRefill(item)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "ההעברה ל\"לחידוש\" נכשלה, נסה שוב") }
             }
         }
     }

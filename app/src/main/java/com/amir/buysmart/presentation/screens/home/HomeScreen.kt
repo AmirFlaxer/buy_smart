@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import com.amir.buysmart.presentation.components.ImageEditActions
 import com.amir.buysmart.presentation.components.ImagePickerButton
 import com.amir.buysmart.presentation.components.ItemImage
 import androidx.compose.material.icons.Icons
@@ -284,6 +285,9 @@ fun HomeScreen(
                                     items = items,
                                     onDeleteItem = viewModel::deleteItemWithUndo,
                                     onEditItem = viewModel::startEditItem,
+                                    onMoveToRefill = viewModel::moveToPendingRefill,
+                                    onReplaceImage = { item, uri -> viewModel.replaceItemImage(context, item, uri) },
+                                    onDeleteImage = viewModel::removeItemImage,
                                     duplicateNameKeys = state.duplicateGroups.keys,
                                     onMergeDuplicates = viewModel::mergeDuplicates
                                 )
@@ -295,7 +299,9 @@ fun HomeScreen(
                                     PendingRefillSection(
                                         items = state.pendingRefillItems,
                                         onApprove = viewModel::approvePendingRefill,
-                                        onDelete = viewModel::deleteItem
+                                        onDelete = viewModel::deleteItem,
+                                        onReplaceImage = { item, uri -> viewModel.replaceItemImage(context, item, uri) },
+                                        onDeleteImage = viewModel::removeItemImage
                                     )
                                 }
                             }
@@ -337,6 +343,28 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = viewModel::dismissQuickAddDuplicate) { Text("ביטול") }
                     OutlinedButton(onClick = viewModel::addDespiteQuickAddDuplicate) { Text("הוסף בכל זאת") }
+                }
+            }
+        )
+    }
+
+    // "הוסף שוב" על פריט שכבר ברשימה לקנייה — במקום ליצור כפילות
+    state.refillConflict?.let { conflict ->
+        val active = conflict.activeItem
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRefillConflict,
+            title = { Text("${active.name} כבר ברשימה") },
+            text = {
+                val qtyText = if (active.quantity.isNotBlank()) " (${active.quantity})" else ""
+                Text("${active.name}$qtyText כבר נמצא ברשימה לקנייה ב${LocationKey.fromItem(active).displayName}.\nמה לעשות?")
+            },
+            confirmButton = {
+                Button(onClick = viewModel::increaseQuantityFromRefillConflict) { Text("הגדל כמות") }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = viewModel::dismissRefillConflict) { Text("ביטול") }
+                    OutlinedButton(onClick = viewModel::removeRefillDuplicate) { Text("הסר מלחידוש") }
                 }
             }
         )
@@ -447,7 +475,9 @@ fun HomeScreen(
 private fun PendingRefillSection(
     items: List<ShoppingItem>,
     onApprove: (ShoppingItem) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    onReplaceImage: (ShoppingItem, Uri) -> Unit,
+    onDeleteImage: (ShoppingItem) -> Unit
 ) {
     // קיבוץ לפי קטגוריה: מובנות לפי סדר קבוע, מותאמות אחריהן לפי שם
     val groupedItems = items
@@ -500,6 +530,20 @@ private fun PendingRefillSection(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (item.imageUrl.isNotBlank()) {
+                                    ItemImage(
+                                        data = item.imageUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .padding(end = 6.dp),
+                                        contentScale = ContentScale.Crop,
+                                        expandable = true,
+                                        onReplace = { uri -> onReplaceImage(item, uri) },
+                                        onDelete = { onDeleteImage(item) }
+                                    )
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         text = item.name + if (item.quantity.isNotBlank()) " × ${item.quantity}" else "",
@@ -693,7 +737,10 @@ private fun EditItemBottomSheet(
                             data = item.imageUrl,
                             contentDescription = "תמונת המוצר",
                             modifier = imageModifier,
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            expandable = true,
+                            onReplace = onImagePicked,
+                            onDelete = onImageRemoved
                         )
                     }
                     if (isUploadingImage) {
@@ -704,13 +751,12 @@ private fun EditItemBottomSheet(
                             CircularProgressIndicator()
                         }
                     }
-                    IconButton(
-                        onClick = onImageRemoved,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                    ) {
-                        Icon(Icons.Default.Close, "הסר תמונה", tint = MaterialTheme.colorScheme.error)
-                    }
                 }
+                ImageEditActions(
+                    onReplace = onImagePicked,
+                    onDelete = onImageRemoved,
+                    enabled = !isUploadingImage
+                )
             } else {
                 ImagePickerButton(
                     onImagePicked = onImagePicked,

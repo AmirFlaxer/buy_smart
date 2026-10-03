@@ -86,6 +86,12 @@ class ItemRepositoryImpl @Inject constructor(
         itemDao.setPendingRefillAndResetBought(item.id, false)
     }
 
+    // ההפך מ-approvePendingRefill: פריט פעיל שהתחרטו עליו חוזר להמתין באזור "לחידוש"
+    override suspend fun moveToPendingRefill(item: ShoppingItem) {
+        firestoreService.setPendingRefill(item.id, item.listId, true)
+        itemDao.setPendingRefillAndResetBought(item.id, true)
+    }
+
     override suspend fun mergeDuplicates(group: List<ShoppingItem>, unitPreference: String) {
         if (group.size < 2) return
         val pref = if (unitPreference == "COUNT") UnitType.COUNT else UnitType.WEIGHT

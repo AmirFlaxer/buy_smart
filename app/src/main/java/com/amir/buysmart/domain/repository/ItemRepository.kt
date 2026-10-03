@@ -17,5 +17,6 @@ interface ItemRepository {
     suspend fun saveHistory(name: String, location: ShoppingLocation, note: String, quantity: String)
     suspend fun getHistory(name: String): ItemHistory?
     suspend fun approvePendingRefill(item: ShoppingItem)
+    suspend fun moveToPendingRefill(item: ShoppingItem)
     suspend fun mergeDuplicates(group: List<ShoppingItem>, unitPreference: String)
 }

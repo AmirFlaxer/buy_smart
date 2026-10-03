@@ -1,5 +1,6 @@
 package com.amir.buysmart.presentation.components
 
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,7 +10,11 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +36,9 @@ fun LocationSection(
     items: List<ShoppingItem>,
     onDeleteItem: (ShoppingItem) -> Unit,
     onEditItem: (ShoppingItem) -> Unit = {},
+    onMoveToRefill: (ShoppingItem) -> Unit = {},
+    onReplaceImage: (ShoppingItem, Uri) -> Unit = { _, _ -> },
+    onDeleteImage: (ShoppingItem) -> Unit = {},
     duplicateNameKeys: Set<String> = emptySet(),
     onMergeDuplicates: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -66,6 +74,9 @@ fun LocationSection(
                         item = item,
                         onDelete = { onDeleteItem(item) },
                         onEdit = { onEditItem(item) },
+                        onMoveToRefill = { onMoveToRefill(item) },
+                        onReplaceImage = { uri -> onReplaceImage(item, uri) },
+                        onDeleteImage = { onDeleteImage(item) },
                         isDuplicate = duplicateNameKeys.contains(nameKey),
                         onMerge = { onMergeDuplicates(nameKey) },
                         defaultBg = tint.container,
@@ -83,6 +94,9 @@ private fun SwipeableItemRow(
     item: ShoppingItem,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    onMoveToRefill: () -> Unit,
+    onReplaceImage: (Uri) -> Unit,
+    onDeleteImage: () -> Unit,
     isDuplicate: Boolean = false,
     onMerge: () -> Unit = {},
     defaultBg: Color = Color.Unspecified,
@@ -121,7 +135,8 @@ private fun SwipeableItemRow(
             }
         }
     ) {
-        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit, isDuplicate = isDuplicate, onMerge = onMerge, defaultBg = defaultBg)
+        ItemRow(item = item, onDelete = onDelete, onEdit = onEdit, onMoveToRefill = onMoveToRefill,
+            onReplaceImage = onReplaceImage, onDeleteImage = onDeleteImage, isDuplicate = isDuplicate, onMerge = onMerge, defaultBg = defaultBg)
     }
 }
 
@@ -130,11 +145,34 @@ fun ItemRow(
     item: ShoppingItem,
     onDelete: () -> Unit,
     onEdit: () -> Unit = {},
+    onMoveToRefill: () -> Unit = {},
+    onReplaceImage: ((Uri) -> Unit)? = null,
+    onDeleteImage: (() -> Unit)? = null,
     isDuplicate: Boolean = false,
     onMerge: () -> Unit = {},
     defaultBg: Color = Color.Unspecified,
     modifier: Modifier = Modifier
 ) {
+    // X שואל: למחוק, או להחזיר ל"לחידוש" (התחרטו על ההוספה). החלקה הצידה עדיין מוחקת ישירות
+    var showRemoveDialog by remember { mutableStateOf(false) }
+    if (showRemoveDialog) {
+        AlertDialog(
+            onDismissRequest = { showRemoveDialog = false },
+            title = { Text("להוריד את ${item.name} מהרשימה?") },
+            text = { Text("אפשר להעביר אותו לאזור \"לחידוש\" ולהחזיר אותו בקלות בהמשך, או למחוק אותו לגמרי.") },
+            confirmButton = {
+                Button(onClick = { showRemoveDialog = false; onMoveToRefill() }) { Text("העבר ללחידוש") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { showRemoveDialog = false }) { Text("ביטול") }
+                    TextButton(onClick = { showRemoveDialog = false; onDelete() }) {
+                        Text("מחק", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        )
+    }
     // ברירת מחדל: רקע הקטגוריה (שורה "שטוחה"); דחיפות/כפילות דורסות
     val fallback = if (defaultBg == Color.Unspecified) MaterialTheme.colorScheme.surfaceVariant else defaultBg
     val bgColor = if (isDuplicate) MaterialTheme.colorScheme.errorContainer
@@ -153,7 +191,10 @@ fun ItemRow(
                     .size(40.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .padding(end = 6.dp),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                expandable = true,
+                onReplace = onReplaceImage,
+                onDelete = onDeleteImage
             )
         }
         Column(Modifier.weight(1f).padding(top = 4.dp)) {
@@ -203,7 +244,7 @@ fun ItemRow(
         ) {
             Text("שינוי", style = MaterialTheme.typography.labelSmall)
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = { showRemoveDialog = true }, modifier = Modifier.size(48.dp)) {
             Icon(
                 Icons.Default.Close,
                 contentDescription = "מחק",
