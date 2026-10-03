@@ -150,4 +150,4 @@
 - ✅ המדריך המהיר (HelpScreen + QUICK_GUIDE.md) ו-USER_GUIDE.md עודכנו
 
 ### סטטוס
-- ✅ הותקן על הטלפון. גרסה 1.3 (versionCode 4) הועלתה ל-App Distribution עם הערות-גרסה בעברית (2026-10-03)
+- ✅ הותקן על הטלפון. גרסה 1.3 (versionCode 4) הועלתה ל-App Distribution עם הערות-גרסה בעברית (2026-10-03). 1.3.1 (versionCode 5) - תיקון מיקום הכפתורים - הופצה לבודקים (אומת: Added testers 200)
