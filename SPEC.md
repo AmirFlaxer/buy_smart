@@ -98,7 +98,7 @@
 - ✅ אומת ידנית על 2 מכשירים (2026-06-24, דרך App Distribution release 1.2(3)) - עובד
 - ✅ מוזג ל-master (merge commit `0b60fe5`), branch נמחק (מקומי+origin)
 - מסמך עיצוב: `docs/superpowers/specs/2026-06-17-merge-duplicates-design.md`
-- ⚠️ טרם הופץ כגרסה רשמית - versionName עדיין 1.2. לעדכון רחב צריך להעלות versionCode/versionName
+- ✅ ~~טרם הופץ כגרסה רשמית~~ - הופץ ב-1.3 / 1.3.1 (2026-10-03)
 
 ---
 
