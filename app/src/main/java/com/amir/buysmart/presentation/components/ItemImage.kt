@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -100,56 +103,60 @@ private fun FullScreenImageDialog(
     var confirmDelete by remember { mutableStateOf(false) }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        // decorFitsSystemWindows = false + systemBarsPadding: במכשירים שמדווחים את פסי המערכת לדיאלוג
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Box(
+        Column(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .systemBarsPadding()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onDismiss
-                ),
-            contentAlignment = Alignment.Center
+                )
         ) {
-            ItemImageContent(
-                data = data,
-                contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-            )
+            // סרגל הכפתורים בראש המסך: בתחתית חלק מהמכשירים (למשל סמסונג עם 3 כפתורי ניווט)
+            // החלון נמתח מתחת לפס הניווט בלי לדווח את גובהו, והלחיצה נקלטת כ"בית"/"חזור"
             if (onReplace != null || onDelete != null) {
                 Row(
                     Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        // מעל פס הניווט/המחוות של המערכת — אחרת לחיצה נקלטת כ"בית"/"חזור"
-                        .navigationBarsPadding()
-                        .padding(start = 24.dp, end = 24.dp, bottom = 56.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (onReplace != null) {
-                        FilledTonalButton(onClick = onReplace) {
-                            Icon(Icons.Default.AddAPhoto, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("החלף תמונה")
+                        FilledTonalButton(onClick = onReplace, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("החלף", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     if (onDelete != null) {
                         Button(
                             onClick = { confirmDelete = true },
+                            modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error,
                                 contentColor = MaterialTheme.colorScheme.onError
                             )
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("מחק תמונה")
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("מחק", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
+            }
+            // התמונה ממלאת את כל מה שמתחת לסרגל — הכפתורים לא מסתירים אותה
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ItemImageContent(
+                    data = data,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
             }
         }
     }
