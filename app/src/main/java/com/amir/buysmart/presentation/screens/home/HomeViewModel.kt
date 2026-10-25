@@ -629,8 +629,9 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(recentlyDeleted = null) }
         viewModelScope.launch {
             try {
-                // התמונה (base64) שמורה בתוך הפריט עצמו, כך שהיא משוחזרת יחד איתו
-                addItemUseCase(item.copy(id = ""))
+                // המסמך לא נמחק פיזית, ולכן השחזור מנקה את סימון המחיקה והפריט חוזר כמות שהוא
+                // (כולל התמונה והמזהה)
+                itemRepository.undeleteItem(item)
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "השחזור נכשל, נסה שוב") }
             }

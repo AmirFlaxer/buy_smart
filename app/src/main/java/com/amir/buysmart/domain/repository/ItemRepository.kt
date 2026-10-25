@@ -10,6 +10,7 @@ interface ItemRepository {
     suspend fun addItem(item: ShoppingItem)
     suspend fun toggleBought(itemId: String, listId: String, isBought: Boolean)
     suspend fun deleteItem(itemId: String, listId: String)
+    suspend fun undeleteItem(item: ShoppingItem)
     suspend fun finishShopping(listId: String, categoryKey: String)
     suspend fun searchItemNames(query: String, listId: String): List<String>
     suspend fun updateItem(item: ShoppingItem)

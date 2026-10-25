@@ -5,6 +5,8 @@ import com.amir.buysmart.data.local.ItemHistoryDao
 import com.amir.buysmart.data.local.entity.ItemHistoryEntity
 import com.amir.buysmart.data.local.entity.ShoppingItemEntity
 import com.amir.buysmart.data.remote.FirestoreService
+import com.amir.buysmart.domain.model.DeleteReason
+import com.amir.buysmart.domain.model.Deleter
 import com.amir.buysmart.domain.model.ItemHistory
 import com.amir.buysmart.domain.model.ItemType
 import com.amir.buysmart.domain.model.ShoppingItem
@@ -12,22 +14,36 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.util.ItemMerge
 import com.amir.buysmart.domain.util.UnitType
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 
 class ItemRepositoryImpl @Inject constructor(
     private val firestoreService: FirestoreService,
     private val itemDao: ItemDao,
-    private val historyDao: ItemHistoryDao
+    private val historyDao: ItemHistoryDao,
+    private val auth: FirebaseAuth
 ) : ItemRepository {
 
+    // שם המוחק - כמו displayName ב-HomeViewModel
+    private fun currentDeleter(): Deleter {
+        val user = auth.currentUser
+        return Deleter(
+            uid = user?.uid ?: "",
+            name = user?.displayName ?: user?.email?.substringBefore("@") ?: ""
+        )
+    }
+
     override fun getItemsForList(listId: String): Flow<List<ShoppingItem>> {
-        return firestoreService.getItemsForList(listId).onEach { items ->
-            // החלפה מלאה של פריטי הרשימה — כך פריטים שנמחקו ע"י משתמש אחר
-            // לא נשארים במטמון ולא מופיעים בהשלמה האוטומטית
-            itemDao.replaceItemsForList(listId, items.map { ShoppingItemEntity.fromDomain(it) })
-        }
+        return firestoreService.observeAllItems(listId)
+            .map { snapshot -> snapshot.items.filter { !it.isDeleted } }
+            .onEach { items ->
+                // החלפה מלאה של פריטי הרשימה - כך פריטים שנמחקו ע"י משתמש אחר
+                // לא נשארים במטמון ולא מופיעים בהשלמה האוטומטית (Room מקבל פעילים בלבד)
+                itemDao.replaceItemsForList(listId, items.map { ShoppingItemEntity.fromDomain(it) })
+            }
     }
 
     override suspend fun addItem(item: ShoppingItem) {
@@ -39,8 +55,12 @@ class ItemRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteItem(itemId: String, listId: String) {
-        firestoreService.deleteItem(itemId, listId)
+        firestoreService.softDeleteItem(itemId, listId, DeleteReason.MANUAL, currentDeleter())
         itemDao.deleteItem(itemId)
+    }
+
+    override suspend fun undeleteItem(item: ShoppingItem) {
+        firestoreService.undeleteItems(item.listId, listOf(item.id), markAutoRestored = false)
     }
 
     override suspend fun searchItemNames(query: String, listId: String): List<String> =
@@ -75,7 +95,8 @@ class ItemRepositoryImpl @Inject constructor(
         firestoreService.finishShoppingBatch(
             listId,
             deleteIds = oneTime.map { it.id },
-            refillIds = recurring.map { it.id }
+            refillIds = recurring.map { it.id },
+            by = currentDeleter()
         )
         itemDao.deleteItemsByIds(oneTime.map { it.id })
         recurring.forEach { itemDao.setPendingRefillAndResetBought(it.id, true) }
@@ -96,7 +117,7 @@ class ItemRepositoryImpl @Inject constructor(
         if (group.size < 2) return
         val pref = if (unitPreference == "COUNT") UnitType.COUNT else UnitType.WEIGHT
         val result = ItemMerge.merge(group, pref)
-        firestoreService.mergeItemsBatch(group.first().listId, result.survivor, result.deleteIds)
+        firestoreService.mergeItemsBatch(group.first().listId, result.survivor, result.deleteIds, currentDeleter())
         itemDao.deleteItemsByIds(result.deleteIds)
         itemDao.updateItem(ShoppingItemEntity.fromDomain(result.survivor))
     }

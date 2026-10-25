@@ -1,8 +1,11 @@
 package com.amir.buysmart.data.remote
 
 import android.util.Log
+import com.amir.buysmart.domain.model.DeleteReason
+import com.amir.buysmart.domain.model.Deleter
 import com.amir.buysmart.domain.model.ItemPriority
 import com.amir.buysmart.domain.model.ItemType
+import com.amir.buysmart.domain.model.ItemsSnapshot
 import com.amir.buysmart.domain.model.JoinRequest
 import com.amir.buysmart.domain.model.JoinResult
 import com.amir.buysmart.domain.model.ShoppingItem
@@ -11,6 +14,7 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -36,7 +40,7 @@ class FirestoreService @Inject constructor(
     private val backfilledCodes = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     /** ממיר מסמך Firestore ל-ShoppingItem. מחזיר null אם המיפוי נכשל. */
-    private fun DocumentSnapshot.toShoppingItem(listId: String): ShoppingItem? {
+    internal fun DocumentSnapshot.toShoppingItem(listId: String): ShoppingItem? {
         return try {
             ShoppingItem(
                 id = id,
@@ -64,7 +68,14 @@ class FirestoreService @Inject constructor(
                     ItemPriority.NORMAL
                 },
                 pendingRefill = getBoolean("pendingRefill") ?: false,
-                imageUrl = getString("imageUrl") ?: ""
+                imageUrl = getString("imageUrl") ?: "",
+                deletedAtMillis = getTimestamp("deletedAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?.toDate()?.time,
+                deleteReason = getString("deleteReason") ?: "",
+                deletedByName = getString("deletedByName") ?: "",
+                autoRestoredAtMillis = getTimestamp("autoRestoredAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?.toDate()?.time,
+                purchaseCount = getLong("purchaseCount")?.toInt() ?: 0
             )
         } catch (e: Exception) {
             Log.w(TAG, "כשל במיפוי פריט ${id}", e)
@@ -88,15 +99,17 @@ class FirestoreService @Inject constructor(
         }
     }
 
-    fun getItemsForList(listId: String): Flow<List<ShoppingItem>> = callbackFlow {
+    /** כל מסמכי הפריטים ברשימה, כולל מחוקים (deletedAt) - הסינון באחריות הקורא. */
+    fun observeAllItems(listId: String): Flow<ItemsSnapshot> = callbackFlow {
         val listener = itemsCollection(listId)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.EXCLUDE) { snapshot, error ->
                 if (error != null) {
-                    Log.w(TAG, "getItemsForList נכשל עבור $listId", error)
+                    Log.w(TAG, "observeAllItems נכשל עבור $listId", error)
                     close(error); return@addSnapshotListener
                 }
-                val items = snapshot?.documents?.mapNotNull { it.toShoppingItem(listId) } ?: emptyList()
-                trySend(items)
+                if (snapshot == null) return@addSnapshotListener
+                val items = snapshot.documents.mapNotNull { it.toShoppingItem(listId) }
+                trySend(ItemsSnapshot(items, snapshot.metadata.isFromCache))
             }
         awaitClose { listener.remove() }
     }
@@ -114,7 +127,8 @@ class FirestoreService @Inject constructor(
             "addedByName" to item.addedByName,
             "priority" to item.priority.name,
             "pendingRefill" to item.pendingRefill,
-            "imageUrl" to item.imageUrl
+            "imageUrl" to item.imageUrl,
+            "purchaseCount" to item.purchaseCount
         )
         if (item.id.isBlank()) {
             itemsCollection(item.listId).add(data).await()
@@ -147,32 +161,73 @@ class FirestoreService @Inject constructor(
             .await()
     }
 
-    suspend fun deleteItem(itemId: String, listId: String) {
-        itemsCollection(listId).document(itemId).delete().await()
+    /** מחיקה רכה: המסמך נשאר, ומסומן כמחוק (מי, מתי ולמה). */
+    suspend fun softDeleteItem(itemId: String, listId: String, reason: String, by: Deleter) {
+        itemsCollection(listId).document(itemId).update(softDeleteFields(reason, by)).await()
+    }
+
+    private fun softDeleteFields(reason: String, by: Deleter): Map<String, Any> = mapOf(
+        "deletedAt" to FieldValue.serverTimestamp(),
+        "deleteReason" to reason,
+        "deletedBy" to by.uid,
+        "deletedByName" to by.name
+    )
+
+    /** מחזיר פריטים מחוקים לרשימה (ב-batch). markAutoRestored מסמן שהשחזור בוצע אוטומטית. */
+    suspend fun undeleteItems(listId: String, itemIds: List<String>, markAutoRestored: Boolean) {
+        if (itemIds.isEmpty()) return
+        val batch = firestore.batch()
+        itemIds.forEach {
+            val fields = mutableMapOf<String, Any>(
+                "deletedAt" to FieldValue.delete(),
+                "deleteReason" to FieldValue.delete(),
+                "deletedBy" to FieldValue.delete(),
+                "deletedByName" to FieldValue.delete()
+            )
+            if (markAutoRestored) fields["autoRestoredAt"] = FieldValue.serverTimestamp()
+            batch.update(itemsCollection(listId).document(it), fields)
+        }
+        batch.commit().await()
     }
 
     /**
-     * סיום קנייה בקטגוריה ב-batch אטומי אחד: מחיקת החד-פעמיים והעברת החוזרים
+     * סיום קנייה בקטגוריה ב-batch אטומי אחד: מחיקה רכה של החד-פעמיים והעברת החוזרים
      * ל"לחידוש". כשל רשת באמצע לא משאיר את הקטגוריה חצי-מטופלת.
      */
-    suspend fun finishShoppingBatch(listId: String, deleteIds: List<String>, refillIds: List<String>) {
+    suspend fun finishShoppingBatch(
+        listId: String,
+        deleteIds: List<String>,
+        refillIds: List<String>,
+        by: Deleter
+    ) {
         if (deleteIds.isEmpty() && refillIds.isEmpty()) return
         val batch = firestore.batch()
-        deleteIds.forEach { batch.delete(itemsCollection(listId).document(it)) }
+        deleteIds.forEach {
+            batch.update(itemsCollection(listId).document(it), softDeleteFields(DeleteReason.FINISH, by))
+        }
         refillIds.forEach {
             batch.update(
                 itemsCollection(listId).document(it),
-                mapOf("pendingRefill" to true, "isBought" to false)
+                mapOf(
+                    "pendingRefill" to true,
+                    "isBought" to false,
+                    "purchaseCount" to FieldValue.increment(1)
+                )
             )
         }
         batch.commit().await()
     }
 
     /**
-     * ממזג כפילויות ב-batch אטומי: מעדכן את הפריט השורד ומוחק את המיותרים.
+     * ממזג כפילויות ב-batch אטומי: מעדכן את הפריט השורד ומוחק (רך) את המיותרים.
      * כשל רשת באמצע לא משאיר מצב חצי-ממוזג.
      */
-    suspend fun mergeItemsBatch(listId: String, survivor: ShoppingItem, deleteIds: List<String>) {
+    suspend fun mergeItemsBatch(
+        listId: String,
+        survivor: ShoppingItem,
+        deleteIds: List<String>,
+        by: Deleter
+    ) {
         if (deleteIds.isEmpty()) return
         val batch = firestore.batch()
         batch.update(
@@ -186,7 +241,9 @@ class FirestoreService @Inject constructor(
                 "imageUrl" to survivor.imageUrl
             )
         )
-        deleteIds.forEach { batch.delete(itemsCollection(listId).document(it)) }
+        deleteIds.forEach {
+            batch.update(itemsCollection(listId).document(it), softDeleteFields(DeleteReason.MERGE, by))
+        }
         batch.commit().await()
     }
 
@@ -207,6 +264,7 @@ class FirestoreService @Inject constructor(
         }
         return query.get().await().documents
             .mapNotNull { it.toShoppingItem(listId) }
+            .filter { !it.isDeleted }
             .filter { isCustom || it.customLocation.isEmpty() }
     }
 
