@@ -74,12 +74,14 @@ class DataProtectionRepository @Inject constructor(
         return (doc.get("members") as? List<*>)?.contains(uid) == true
     }
 
-    /** הגיבוי בעל ה-id הגבוה ביותר שיש לו כותרת (id הוא yyyy-MM-dd, לכן סדר מילוני = כרונולוגי). */
+    /** הגיבוי האחרון לפי createdAt (זמן-שרת). כותרת בלי createdAt מדולגת. */
     suspend fun latestBackup(listId: String): BackupInfo? {
-        val header = backupService.listHeaders(listId).maxByOrNull { it.id } ?: return null
+        val (header, createdAt) = backupService.listHeaders(listId)
+            .mapNotNull { h -> h.getTimestamp("createdAt")?.toDate()?.time?.let { h to it } }
+            .maxByOrNull { it.second } ?: return null
         return BackupInfo(
             id = header.id,
-            createdAtMillis = header.getTimestamp("createdAt")?.toDate()?.time ?: 0L,
+            createdAtMillis = createdAt,
             itemCount = header.getLong("itemCount")?.toInt() ?: 0,
             customLocations = header.customLocationsList()
         )
