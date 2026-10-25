@@ -22,6 +22,23 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** מפת-השדות של פריט ב-Firestore. בלי שדות מחיקה/שחזור (deletedAt וכו') - אלה מנוהלים בנפרד. */
+internal fun ShoppingItem.toFirestoreMap(): Map<String, Any> = mapOf(
+    "name" to name,
+    "quantity" to quantity,
+    "note" to note,
+    "location" to location.name,
+    "customLocation" to customLocation,
+    "type" to type.name,
+    "isBought" to isBought,
+    "addedBy" to addedBy,
+    "addedByName" to addedByName,
+    "priority" to priority.name,
+    "pendingRefill" to pendingRefill,
+    "imageUrl" to imageUrl,
+    "purchaseCount" to purchaseCount
+)
+
 @Singleton
 class FirestoreService @Inject constructor(
     private val firestore: FirebaseFirestore
@@ -115,21 +132,7 @@ class FirestoreService @Inject constructor(
     }
 
     suspend fun addItem(item: ShoppingItem) {
-        val data = mapOf(
-            "name" to item.name,
-            "quantity" to item.quantity,
-            "note" to item.note,
-            "location" to item.location.name,
-            "customLocation" to item.customLocation,
-            "type" to item.type.name,
-            "isBought" to item.isBought,
-            "addedBy" to item.addedBy,
-            "addedByName" to item.addedByName,
-            "priority" to item.priority.name,
-            "pendingRefill" to item.pendingRefill,
-            "imageUrl" to item.imageUrl,
-            "purchaseCount" to item.purchaseCount
-        )
+        val data = item.toFirestoreMap()
         if (item.id.isBlank()) {
             itemsCollection(item.listId).add(data).await()
         } else {
