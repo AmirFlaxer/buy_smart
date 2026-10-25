@@ -229,7 +229,8 @@ class HomeViewModel @Inject constructor(
     /** שומר הנתונים: אוסף את כל הפריטים (גם מחוקים) ומשחזר אוטומטית במחיקה גורפת או במחיקת שרת. */
     private fun observeGuard(listId: String) {
         guardJob = viewModelScope.launch {
-            dataProtectionRepository.observeAllItems(listId)
+            // כולל שינויי metadata: המעבר מהמטמון לשרת (fromCache false) מגיע לשומר גם בלי שינוי בנתונים
+            dataProtectionRepository.observeAllItems(listId, includeMetadataChanges = true)
                 .conflate()
                 .catch { Log.w("HomeViewModel", "האזנת השומר נסגרה", it) }
                 .collect { snapshot ->

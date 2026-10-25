@@ -47,7 +47,8 @@ class DataProtectionRepository @Inject constructor(
     private fun DocumentSnapshot.customLocationsList(): List<String> =
         (get("customLocations") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
-    fun observeAllItems(listId: String): Flow<ItemsSnapshot> = firestoreService.observeAllItems(listId)
+    fun observeAllItems(listId: String, includeMetadataChanges: Boolean = false): Flow<ItemsSnapshot> =
+        firestoreService.observeAllItems(listId, includeMetadataChanges)
 
     suspend fun autoRestore(listId: String, itemIds: List<String>) {
         firestoreService.undeleteItems(listId, itemIds, markAutoRestored = true)

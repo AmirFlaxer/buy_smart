@@ -121,10 +121,14 @@ class FirestoreService @Inject constructor(
         }
     }
 
-    /** כל מסמכי הפריטים ברשימה, כולל מחוקים (deletedAt) - הסינון באחריות הקורא. */
-    fun observeAllItems(listId: String): Flow<ItemsSnapshot> = callbackFlow {
+    /**
+     * כל מסמכי הפריטים ברשימה, כולל מחוקים (deletedAt) - הסינון באחריות הקורא.
+     * includeMetadataChanges: גם שינויי metadata בלבד (למשל fromCache מ-true ל-false), לשומר.
+     */
+    fun observeAllItems(listId: String, includeMetadataChanges: Boolean = false): Flow<ItemsSnapshot> = callbackFlow {
+        val metadata = if (includeMetadataChanges) MetadataChanges.INCLUDE else MetadataChanges.EXCLUDE
         val listener = itemsCollection(listId)
-            .addSnapshotListener(MetadataChanges.EXCLUDE) { snapshot, error ->
+            .addSnapshotListener(metadata) { snapshot, error ->
                 if (error != null) {
                     Log.w(TAG, "observeAllItems נכשל עבור $listId", error)
                     close(error); return@addSnapshotListener
