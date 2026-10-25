@@ -18,6 +18,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
@@ -38,6 +39,8 @@ class BackupWorker @AssistedInject constructor(
 
         val listIds = try {
             repo.userListIds(uid)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "טעינת רשימות המשתמש נכשלה", e)
             return if (isPermissionDenied(e)) Result.success() else Result.retry()
@@ -50,6 +53,9 @@ class BackupWorker @AssistedInject constructor(
                     repo.createBackupIfMissing(listId, ProtectionPolicy.backupId(today), uid)
                 }
                 repo.purge(listId, System.currentTimeMillis())
+            } catch (e: CancellationException) {
+                // העבודה בוטלה (למשל אבדה הרשת) - לא נבלע כשגיאה
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "גיבוי/ניקוי נכשל לרשימה $listId", e)
                 // כללי הגיבויים אולי עוד לא נפרסו - לא מנסים שוב ללא סוף
@@ -81,7 +87,8 @@ class BackupWorker @AssistedInject constructor(
             )
             wm.enqueueUniqueWork(
                 STARTUP_NAME,
-                ExistingWorkPolicy.REPLACE,
+                // KEEP: פתיחה חוזרת של האפליקציה לא מבטלת ריצה שכבר באמצע
+                ExistingWorkPolicy.KEEP,
                 OneTimeWorkRequestBuilder<BackupWorker>()
                     .setConstraints(constraints)
                     .build()
