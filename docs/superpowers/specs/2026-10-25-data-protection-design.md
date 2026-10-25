@@ -59,10 +59,10 @@
 
 ### 2. חוקי Firestore
 
-- **`lists/{listId}/items/{itemId}`:** read, create ו-update לחבר, כמו היום. **delete** רק אם `resource.data.deletedAt` הוא timestamp ישן מ-30 יום.
+- **`lists/{listId}/items/{itemId}`:** read, create ו-update לחבר, כמו היום. **delete** רק אם `resource.data.deletedAt` הוא timestamp ישן מ-30 יום. בעדכון של פריט שכבר מחוק, `deletedAt` נשאר כמו שהוא, מוסר או מוצב ל-`request.time`, כדי שאי אפשר יהיה להקדים אותו לאחור ולמחוק מיד.
 - **`lists/{listId}`:** `allow delete: if false`.
 - **`lists/{listId}/backups/{backupId}`** ו-**`.../backups/{backupId}/items/{itemId}`:**
-  - read ו-create לחבר.
+  - read ו-create לחבר. ב-create חובה `createdAt == request.time` (חותמת-שרת), כדי שאי אפשר יהיה ליצור גיבוי "ותיק" ולמחוק אותו מיד.
   - **אין update.**
   - delete רק אם `resource.data.createdAt` ישן מ-35 יום.
   - לכן כל גיבוי נשמר לפחות 35 יום, כלומר כ-10 גיבויים.

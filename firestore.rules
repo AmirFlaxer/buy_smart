@@ -4,6 +4,8 @@ rules_version = '2';
 // מבנה: lists/{listId} (name, ownerId, members[], inviteCode, customLocations[])
 //        lists/{listId}/items/{itemId}
 //        lists/{listId}/joinRequests/{uid} (uid, name) — בקשות הצטרפות ממתינות
+//        lists/{listId}/backups/{backupId} (createdAt, createdBy, itemCount, customLocations) - כותרת גיבוי
+//        lists/{listId}/backups/{backupId}/items/{itemId} - העתקי הפריטים בגיבוי (+ createdAt)
 //        inviteCodes/{code} (listId, name) — מיפוי קוד הזמנה → רשימה (get בלבד, ללא סריקה)
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -46,13 +48,16 @@ service cloud.firestore {
         );
 
         // עדכון: חבר. במעבר מ"לא מחוק" ל"מחוק" חובה לתעד מי ומתי (חותמת-שרת).
-        // שחזור (הסרת deletedAt) וכל עדכון אחר נשארים מותרים.
+        // בפריט שכבר מחוק: deletedAt נשאר כמו שהוא, מוסר (שחזור) או מוצב לעכשיו -
+        // אסור להקדים אותו לאחור (אחרת אפשר לעקוף את 30 הימים של המחיקה הפיזית).
         allow update: if isMember(
             get(/databases/$(database)/documents/lists/$(listId)).data
           )
           && (
-            resource.data.get('deletedAt', null) != null
-            || request.resource.data.get('deletedAt', null) == null
+            request.resource.data.get('deletedAt', null) == null
+            || (resource.data.get('deletedAt', null) != null
+                && (request.resource.data.deletedAt == resource.data.deletedAt
+                    || request.resource.data.deletedAt == request.time))
             || (request.resource.data.deletedBy == request.auth.uid
                 && request.resource.data.deletedAt == request.time)
           );
@@ -65,20 +70,29 @@ service cloud.firestore {
       }
 
       // גיבויים (פעמיים בשבוע). נוצרים ונקראים ע"י חברים, אין עדכון.
+      // ביצירה createdAt חייב להיות חותמת-שרת (אי אפשר להקדים גיבוי כדי למחוק אותו).
       // מחיקה רק של גיבוי ותיק מ-35 יום.
       match /backups/{backupId} {
-        allow read, create: if isMember(
+        allow read: if isMember(
           get(/databases/$(database)/documents/lists/$(listId)).data
         );
+        allow create: if isMember(
+            get(/databases/$(database)/documents/lists/$(listId)).data
+          )
+          && request.resource.data.createdAt == request.time;
         allow delete: if isMember(
             get(/databases/$(database)/documents/lists/$(listId)).data
           )
           && resource.data.createdAt < request.time - duration.value(35, 'd');
 
         match /items/{itemId} {
-          allow read, create: if isMember(
+          allow read: if isMember(
             get(/databases/$(database)/documents/lists/$(listId)).data
           );
+          allow create: if isMember(
+              get(/databases/$(database)/documents/lists/$(listId)).data
+            )
+            && request.resource.data.createdAt == request.time;
           allow delete: if isMember(
               get(/databases/$(database)/documents/lists/$(listId)).data
             )
