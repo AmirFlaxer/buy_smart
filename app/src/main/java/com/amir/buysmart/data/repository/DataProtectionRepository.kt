@@ -53,6 +53,11 @@ class DataProtectionRepository @Inject constructor(
         firestoreService.undeleteItems(listId, itemIds, markAutoRestored = true)
     }
 
+    /** שחזור ידני של פריטים שנמחקו, ממסך "נמחקו לאחרונה". */
+    suspend fun undelete(listId: String, itemIds: List<String>) {
+        firestoreService.undeleteItems(listId, itemIds, markAutoRestored = false)
+    }
+
     /** מספר מסמכי הפריטים בשרת (כולל מחוקים), לזיהוי מחיקה מהשרת. */
     suspend fun serverItemDocCount(listId: String): Int =
         itemsCollection(listId).get(Source.SERVER).await().size()

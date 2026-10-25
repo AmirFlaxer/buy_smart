@@ -31,6 +31,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 /** "הוסף שוב" על פריט מ"לחידוש" שכבר נמצא ברשימה לקנייה (אותו שם, אותה קטגוריה). */
@@ -70,6 +72,9 @@ data class HomeUiState(
     val joinRequests: List<JoinRequest> = emptyList(),
     // בקשת הצטרפות שלי שממתינה לאישור (צד המבקש)
     val pendingJoin: PendingJoin? = null,
+    // פריטים שנמחקו לאחרונה לפי יום, למסך "נמחקו לאחרונה"
+    val deletedGroups: List<Pair<LocalDate, List<ShoppingItem>>> = emptyList(),
+    val showRecentlyDeleted: Boolean = false,
     // הודעת שגיאה חד-פעמית להצגה ב-Snackbar
     val errorMessage: String? = null
 ) {
@@ -218,6 +223,11 @@ class HomeViewModel @Inject constructor(
                 .conflate()
                 .catch { Log.w("HomeViewModel", "האזנת השומר נסגרה", it) }
                 .collect { snapshot ->
+                // קודם מעדכנים את המסך - השומר עלול להשתהות כמה שניות בשחזור מגיבוי
+                val groups = ProtectionPolicy.recentlyDeleted(
+                    snapshot.items, System.currentTimeMillis(), ZoneId.systemDefault()
+                )
+                _uiState.update { it.copy(deletedGroups = groups) }
                 val message = listGuardian.onSnapshot(
                     listId, userId, snapshot, System.currentTimeMillis()
                 )
@@ -669,6 +679,22 @@ class HomeViewModel @Inject constructor(
 
     // התמונה מאוחסנת בתוך מסמך הפריט (base64), ולכן נמחקת יחד איתו — אין צורך בניקוי נפרד.
     fun clearRecentlyDeleted() = _uiState.update { it.copy(recentlyDeleted = null) }
+
+    fun openRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = true) }
+
+    fun closeRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = false) }
+
+    fun restoreDeleted(ids: List<String>) {
+        val listId = _uiState.value.activeList?.id ?: return
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                dataProtectionRepository.undelete(listId, ids)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "השחזור נכשל, נסה שוב") }
+            }
+        }
+    }
 
     fun clearError() = _uiState.update { it.copy(errorMessage = null) }
 

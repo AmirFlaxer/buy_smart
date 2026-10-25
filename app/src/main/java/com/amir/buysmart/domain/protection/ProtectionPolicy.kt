@@ -3,7 +3,9 @@ package com.amir.buysmart.domain.protection
 import com.amir.buysmart.domain.model.DeleteReason
 import com.amir.buysmart.domain.model.ShoppingItem
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 // לוגיקת הגנה על נתוני הרשימה - טהורה, בלי תלות באנדרואיד או בפיירבייס
@@ -80,4 +82,21 @@ object ProtectionPolicy {
         val restoredAt = item.autoRestoredAtMillis ?: return false
         return nowMillis - restoredAt <= RESTORE_NOTIFY_SUPPRESS_MS
     }
+
+    // פריטים שנמחקו ידנית או במיזוג ב-30 הימים האחרונים, מקובצים לפי יום מקומי (חדש ראשון)
+    fun recentlyDeleted(
+        items: List<ShoppingItem>,
+        nowMillis: Long,
+        zone: ZoneId
+    ): List<Pair<LocalDate, List<ShoppingItem>>> =
+        items
+            .filter { item ->
+                val deletedAt = item.deletedAtMillis ?: return@filter false
+                (item.deleteReason == DeleteReason.MANUAL || item.deleteReason == DeleteReason.MERGE) &&
+                    nowMillis - deletedAt <= ITEM_PURGE_AGE_MS
+            }
+            .sortedByDescending { it.deletedAtMillis }
+            .groupBy { Instant.ofEpochMilli(it.deletedAtMillis!!).atZone(zone).toLocalDate() }
+            .toList()
+            .sortedByDescending { it.first }
 }

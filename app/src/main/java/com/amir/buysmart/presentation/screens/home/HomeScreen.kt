@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Tune
@@ -70,6 +71,13 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    if (state.showRecentlyDeleted) {
+        RecentlyDeletedScreen(
+            groups = state.deletedGroups,
+            onRestore = viewModel::restoreDeleted,
+            onClose = viewModel::closeRecentlyDeleted
+        )
+    }
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var backPressedOnce by remember { mutableStateOf(false) }
@@ -191,6 +199,14 @@ fun HomeScreen(
                                 onClick = {
                                     overflowExpanded = false
                                     showLeaveDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("נמחקו לאחרונה") },
+                                leadingIcon = { Icon(Icons.Default.Restore, null) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    viewModel.openRecentlyDeleted()
                                 }
                             )
                             HorizontalDivider()
