@@ -1,7 +1,10 @@
 package com.amir.buysmart.data.repository
 
 import com.amir.buysmart.data.remote.BackupService
+import android.util.Log
 import com.amir.buysmart.data.remote.FirestoreService
+import com.amir.buysmart.data.remote.commitInChunks
+import com.amir.buysmart.data.remote.estimatedBytes
 import com.amir.buysmart.data.remote.toFirestoreMap
 import com.amir.buysmart.domain.model.ItemsSnapshot
 import com.amir.buysmart.domain.model.ShoppingItem
@@ -11,6 +14,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.WriteBatch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -54,7 +58,13 @@ class DataProtectionRepository @Inject constructor(
         itemsCollection(listId).get(Source.SERVER).await().size()
 
     suspend fun listExistsAndIsMember(listId: String, uid: String): Boolean {
-        val doc = listDoc(listId).get(Source.SERVER).await()
+        // הכללים מתירים קריאה רק לחבר: רשימה שנמחקה או אי-חברות מגיעות כ-PERMISSION_DENIED
+        val doc = try {
+            listDoc(listId).get(Source.SERVER).await()
+        } catch (e: FirebaseFirestoreException) {
+            if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return false
+            throw e
+        }
         if (!doc.exists()) return false
         return (doc.get("members") as? List<*>)?.contains(uid) == true
     }
@@ -71,24 +81,28 @@ class DataProtectionRepository @Inject constructor(
     }
 
     suspend fun restoreFromBackup(listId: String, backup: BackupInfo) {
-        val docs = backupService.readItems(listId, backup.id)
-        docs.chunked(BackupService.MAX_BATCH_OPS).forEach { chunk ->
-            val batch = firestore.batch()
-            chunk.forEach { doc ->
-                val item = doc.toItem(listId) ?: return@forEach
+        val items = backupService.readItems(listId, backup.id).mapNotNull { doc ->
+            doc.toItem(listId) ?: run {
+                Log.w(TAG, "פריט בגיבוי ${backup.id} לא נמפה, מדלג: ${doc.id}")
+                null
+            }
+        }
+        // customLocations ב-batch הראשון, כדי ששחזור חלקי ישחזר לפחות את הקטגוריות
+        val locationsExtra: ((WriteBatch) -> Unit)? = if (backup.customLocations.isEmpty()) null else { b ->
+            b.update(listDoc(listId), "customLocations", FieldValue.arrayUnion(*backup.customLocations.toTypedArray()))
+        }
+        firestore.commitInChunks(
+            ops = items,
+            sizeOf = { it.toFirestoreMap().estimatedBytes() },
+            apply = { batch, item ->
                 // set מחליף את המסמך כולו: שדות המחיקה נעלמים, createdAt לא נכתב
                 batch.set(
-                    itemsCollection(listId).document(doc.id),
+                    itemsCollection(listId).document(item.id),
                     item.toFirestoreMap() + ("autoRestoredAt" to FieldValue.serverTimestamp())
                 )
-            }
-            batch.commit().await()
-        }
-        if (backup.customLocations.isNotEmpty()) {
-            listDoc(listId).update(
-                "customLocations", FieldValue.arrayUnion(*backup.customLocations.toTypedArray())
-            ).await()
-        }
+            },
+            firstBatchExtra = locationsExtra
+        )
     }
 
     /**
@@ -107,26 +121,26 @@ class DataProtectionRepository @Inject constructor(
         val existing = backupService.existingItemIds(listId, backupId)
         val missing = active.filter { it.id !in existing }
             .associate { it.id to it.toFirestoreMap() }
-        backupService.writeItems(listId, backupId, missing)
-
         val customLocations = listDoc(listId).get(Source.SERVER).await().customLocationsList()
         return try {
+            backupService.writeItems(listId, backupId, missing)
             backupService.writeHeader(listId, backupId, uid, active.size, customLocations)
             true
         } catch (e: FirebaseFirestoreException) {
-            if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) false else throw e
+            // מסמך גיבוי הוא create-only: דחייה פירושה שמכשיר אחר כתב אותו בינתיים - לא שגיאה
+            if (e.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw e
+            Log.w(TAG, "גיבוי $backupId של $listId נכתב במקביל ממכשיר אחר", e)
+            false
         }
     }
 
     suspend fun purge(listId: String, nowMillis: Long) {
-        val items = itemsCollection(listId).get().await().documents.mapNotNull { it.toItem(listId) }
-        ProtectionPolicy.itemsToPurge(items, nowMillis)
-            .chunked(BackupService.MAX_BATCH_OPS)
-            .forEach { chunk ->
-                val batch = firestore.batch()
-                chunk.forEach { batch.delete(itemsCollection(listId).document(it)) }
-                batch.commit().await()
-            }
+        val items = itemsCollection(listId).get(Source.SERVER).await().documents.mapNotNull { it.toItem(listId) }
+        firestore.commitInChunks(
+            ops = ProtectionPolicy.itemsToPurge(items, nowMillis),
+            sizeOf = { 200 },
+            apply = { batch, id -> batch.delete(itemsCollection(listId).document(id)) }
+        )
 
         val backups = backupService.listHeaders(listId)
             .mapNotNull { h -> h.getTimestamp("createdAt")?.toDate()?.time?.let { h.id to it } }
@@ -139,4 +153,8 @@ class DataProtectionRepository @Inject constructor(
     suspend fun userListIds(uid: String): List<String> =
         firestore.collection("lists").whereArrayContains("members", uid).get().await()
             .documents.map { it.id }
+
+    private companion object {
+        const val TAG = "DataProtectionRepo"
+    }
 }
