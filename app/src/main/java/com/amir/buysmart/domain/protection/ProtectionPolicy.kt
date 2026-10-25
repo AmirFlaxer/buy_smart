@@ -26,9 +26,12 @@ object ProtectionPolicy {
             .filter { item ->
                 val deletedAt = item.deletedAtMillis ?: return@filter false
                 val restoredAt = item.autoRestoredAtMillis
+                // פריט שהוחזר אוטומטית ונמחק שוב תוך 24 שעות מהשחזור - מחיקה מכוונת, לא נספר
+                // לעולם. נמדד מול זמן המחיקה (שני השדות חותמות-שרת) ולא מול עכשיו
                 item.deleteReason == DeleteReason.MANUAL &&
                     nowMillis - deletedAt <= LOOKBACK_MS &&
-                    (restoredAt == null || nowMillis - restoredAt > LOOKBACK_MS)
+                    (restoredAt == null ||
+                        (deletedAt - restoredAt > LOOKBACK_MS && nowMillis - restoredAt > LOOKBACK_MS))
             }
             .sortedBy { it.deletedAtMillis }
 

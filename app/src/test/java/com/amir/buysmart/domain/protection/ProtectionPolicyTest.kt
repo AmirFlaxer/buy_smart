@@ -66,6 +66,23 @@ class ProtectionPolicyTest {
     }
 
     @Test
+    fun `item re-deleted soon after auto-restore is never counted even 25h after the restore`() {
+        // שוחזר לפני 25 שעות, נמחק שוב שעתיים אחרי השחזור (בתוך 24 השעות האחרונות)
+        val restoredAt = now - 25 * 60 * 60 * 1000L
+        val items = (0 until 10).map {
+            deleted("r$it", restoredAt + 2 * 60 * 60 * 1000L + it * 100, restoredAt = restoredAt)
+        }
+        assertTrue(ProtectionPolicy.massDeletionCluster(items, now).isEmpty())
+    }
+
+    @Test
+    fun `item re-deleted more than 24h after its auto-restore counts again`() {
+        val restoredAt = now - 3 * day
+        val items = burst(10, 100, restoredAt = restoredAt)
+        assertEquals(10, ProtectionPolicy.massDeletionCluster(items, now).size)
+    }
+
+    @Test
     fun `isBackupDay true only on Sunday and Thursday`() {
         assertTrue(ProtectionPolicy.isBackupDay(LocalDate.of(2026, 10, 25)))
         assertTrue(ProtectionPolicy.isBackupDay(LocalDate.of(2026, 10, 29)))
