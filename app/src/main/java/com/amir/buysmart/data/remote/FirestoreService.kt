@@ -88,6 +88,7 @@ class FirestoreService @Inject constructor(
                 imageUrl = getString("imageUrl") ?: "",
                 deletedAtMillis = getTimestamp("deletedAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                     ?.toDate()?.time,
+                deletedAtClientMillis = getLong("deletedAtClient"),
                 deleteReason = getString("deleteReason") ?: "",
                 deletedByName = getString("deletedByName") ?: "",
                 autoRestoredAtMillis = getTimestamp("autoRestoredAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
@@ -171,6 +172,8 @@ class FirestoreService @Inject constructor(
 
     private fun softDeleteFields(reason: String, by: Deleter): Map<String, Any> = mapOf(
         "deletedAt" to FieldValue.serverTimestamp(),
+        // שעון המכשיר - לזיהוי מחיקה גורפת (deletedAt של מחיקות אופליין זהה לכולן)
+        "deletedAtClient" to System.currentTimeMillis(),
         "deleteReason" to reason,
         "deletedBy" to by.uid,
         "deletedByName" to by.name
@@ -183,6 +186,7 @@ class FirestoreService @Inject constructor(
         itemIds.forEach {
             val fields = mutableMapOf<String, Any>(
                 "deletedAt" to FieldValue.delete(),
+                "deletedAtClient" to FieldValue.delete(),
                 "deleteReason" to FieldValue.delete(),
                 "deletedBy" to FieldValue.delete(),
                 "deletedByName" to FieldValue.delete()

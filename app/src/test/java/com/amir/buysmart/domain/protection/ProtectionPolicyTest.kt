@@ -17,11 +17,13 @@ class ProtectionPolicyTest {
         id: String,
         at: Long,
         reason: String = "manual",
-        restoredAt: Long? = null
+        restoredAt: Long? = null,
+        clientAt: Long? = null
     ) = ShoppingItem(
         id = id, name = "חלב", location = ShoppingLocation.SUPERMARKET,
         addedBy = "u", listId = "l",
-        deletedAtMillis = at, deleteReason = reason, autoRestoredAtMillis = restoredAt
+        deletedAtMillis = at, deletedAtClientMillis = clientAt,
+        deleteReason = reason, autoRestoredAtMillis = restoredAt
     )
 
     private fun active(id: String) = ShoppingItem(
@@ -33,35 +35,88 @@ class ProtectionPolicyTest {
         (0 until count).map { deleted("i$it", now - 60_000 + it * step, reason, restoredAt) }
 
     @Test
-    fun `cluster of 10 manual deletes within 5s is restored`() {
-        assertEquals(10, ProtectionPolicy.massDeletionCluster(burst(10, 400), now).size)
+    fun `cluster of 10 manual deletes within 2s is restored`() {
+        assertEquals(10, ProtectionPolicy.massDeletionCluster(burst(10, 200), now).size)
     }
 
     @Test
     fun `9 deletes is not a cluster`() {
-        assertTrue(ProtectionPolicy.massDeletionCluster(burst(9, 400), now).isEmpty())
+        assertTrue(ProtectionPolicy.massDeletionCluster(burst(9, 200), now).isEmpty())
     }
 
     @Test
-    fun `10 deletes spread over 6s is not a cluster`() {
-        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 650), now).isEmpty())
+    fun `10 deletes spread over 2_7s is not a cluster`() {
+        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 300), now).isEmpty())
+    }
+
+    @Test
+    fun `offline batch with one server time but client times 1s apart is not a cluster`() {
+        // מחיקות אופליין: כולן מקבלות את אותה חותמת-שרת בזמן הסנכרון
+        val synced = now - 60_000
+        val items = (0 until 10).map { deleted("off$it", synced, clientAt = synced - 20_000 + it * 1_000) }
+        assertTrue(ProtectionPolicy.massDeletionCluster(items, now).isEmpty())
+    }
+
+    @Test
+    fun `10 deletes within 2s of client time are a cluster even if server times spread`() {
+        val items = (0 until 10).map {
+            deleted("c$it", now - 60_000 + it * 1_000, clientAt = now - 70_000 + it * 200)
+        }
+        assertEquals(10, ProtectionPolicy.massDeletionCluster(items, now).size)
+    }
+
+    @Test
+    fun `exact 2000ms span is included`() {
+        val base = now - 60_000
+        val offsets = (0 until 9).map { it * 100L } + 2_000L
+        val items = offsets.mapIndexed { i, off -> deleted("b$i", base + off, clientAt = base + off) }
+        assertEquals(10, ProtectionPolicy.massDeletionCluster(items, now).size)
+    }
+
+    @Test
+    fun `2001ms span is not a cluster`() {
+        val base = now - 60_000
+        val offsets = (0 until 9).map { it * 100L } + 2_001L
+        val items = offsets.mapIndexed { i, off -> deleted("b$i", base + off, clientAt = base + off) }
+        assertTrue(ProtectionPolicy.massDeletionCluster(items, now).isEmpty())
+    }
+
+    @Test
+    fun `burst of 10 among scattered older deletes is detected`() {
+        val scattered = (1..20).map { h ->
+            val at = now - h * 60 * 60 * 1000L
+            deleted("s$h", at, clientAt = at)
+        }
+        val burstStart = now - 30 * 60 * 1000L
+        val burst = (0 until 10).map { deleted("x$it", burstStart + it * 150, clientAt = burstStart + it * 150) }
+        val result = ProtectionPolicy.massDeletionCluster(scattered + burst, now)
+        assertEquals(burst.map { it.id }.toSet(), result.toSet())
+    }
+
+    @Test
+    fun `client time older than 24h is outside the lookback even if server time is recent`() {
+        val synced = now - 60_000
+        val items = (0 until 10).map {
+            deleted("late$it", synced, clientAt = now - 25 * 60 * 60 * 1000L + it * 100)
+        }
+        assertTrue(ProtectionPolicy.massDeletionCluster(items, now).isEmpty())
     }
 
     @Test
     fun `finish and merge reasons are ignored`() {
-        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 400, "finish"), now).isEmpty())
-        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 400, "merge"), now).isEmpty())
+        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 200, "finish"), now).isEmpty())
+        assertTrue(ProtectionPolicy.massDeletionCluster(burst(10, 200, "merge"), now).isEmpty())
     }
 
     @Test
     fun `deletes older than 24h are ignored`() {
-        val old = (0 until 10).map { deleted("o$it", now - 25 * 60 * 60 * 1000L + it * 400) }
+        val old = (0 until 10).map { deleted("o$it", now - 25 * 60 * 60 * 1000L + it * 200) }
         assertTrue(ProtectionPolicy.massDeletionCluster(old, now).isEmpty())
     }
 
     @Test
     fun `recently auto-restored items are not counted`() {
-        val items = burst(10, 400, restoredAt = now - 60 * 60 * 1000L)
+        val items = burst(10, 200, restoredAt = now - 60 * 60 * 1000L)
         assertTrue(ProtectionPolicy.massDeletionCluster(items, now).isEmpty())
     }
 

@@ -11,7 +11,7 @@ import java.time.format.DateTimeFormatter
 // לוגיקת הגנה על נתוני הרשימה - טהורה, בלי תלות באנדרואיד או בפיירבייס
 object ProtectionPolicy {
     const val MASS_DELETE_MIN_ITEMS = 10
-    const val MASS_DELETE_WINDOW_MS = 5_000L
+    const val MASS_DELETE_WINDOW_MS = 2_000L
     const val LOOKBACK_MS = 24 * 60 * 60 * 1000L
     const val ITEM_PURGE_AGE_MS = 30 * 24 * 60 * 60 * 1000L
     const val BACKUP_PURGE_AGE_MS = 35 * 24 * 60 * 60 * 1000L
@@ -20,27 +20,32 @@ object ProtectionPolicy {
 
     private val BACKUP_ID_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
+    // זמן המחיקה לזיהוי אשכול: שעון המכשיר המוחק. מחיקות אופליין מקבלות כולן את אותה
+    // חותמת-שרת בזמן הסנכרון, ולכן חותמת-השרת משמשת רק כגיבוי למסמכים בלי זמן-מכשיר
+    private fun clusterTime(item: ShoppingItem): Long? = item.deletedAtClientMillis ?: item.deletedAtMillis
+
     // מחזיר מזהי פריטים לשחזור אם יש אשכול מחיקה גורפת, אחרת רשימה ריקה
     fun massDeletionCluster(items: List<ShoppingItem>, nowMillis: Long): List<String> {
         val candidates = items
             .filter { item ->
                 val deletedAt = item.deletedAtMillis ?: return@filter false
+                val clientAt = clusterTime(item) ?: return@filter false
                 val restoredAt = item.autoRestoredAtMillis
                 // פריט שהוחזר אוטומטית ונמחק שוב תוך 24 שעות מהשחזור - מחיקה מכוונת, לא נספר
-                // לעולם. נמדד מול זמן המחיקה (שני השדות חותמות-שרת) ולא מול עכשיו
+                // לעולם. נמדד מול זמן המחיקה בשרת (שני השדות חותמות-שרת) ולא מול עכשיו
                 item.deleteReason == DeleteReason.MANUAL &&
-                    nowMillis - deletedAt <= LOOKBACK_MS &&
+                    nowMillis - clientAt <= LOOKBACK_MS &&
                     (restoredAt == null ||
                         (deletedAt - restoredAt > LOOKBACK_MS && nowMillis - restoredAt > LOOKBACK_MS))
             }
-            .sortedBy { it.deletedAtMillis }
+            .sortedBy { clusterTime(it) }
 
         // חלון מחליק: הקבוצה הגדולה ביותר שבה max - min <= החלון
         var bestStart = 0
         var bestSize = 0
         var start = 0
         for (end in candidates.indices) {
-            while (candidates[end].deletedAtMillis!! - candidates[start].deletedAtMillis!! >
+            while (clusterTime(candidates[end])!! - clusterTime(candidates[start])!! >
                 MASS_DELETE_WINDOW_MS
             ) start++
             val size = end - start + 1

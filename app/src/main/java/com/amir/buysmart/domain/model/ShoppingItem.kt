@@ -17,6 +17,9 @@ data class ShoppingItem(
     val imageUrl: String = "",
     // מחיקה רכה: פריט עם deletedAtMillis אינו נמחק פיזית, רק מוסתר מהרשימה
     val deletedAtMillis: Long? = null,
+    // זמן המחיקה לפי שעון המכשיר המוחק - לזיהוי מחיקה גורפת (מחיקות אופליין מקבלות
+    // את אותה חותמת-שרת בזמן הסנכרון)
+    val deletedAtClientMillis: Long? = null,
     val deleteReason: String = "",
     val deletedByName: String = "",
     val autoRestoredAtMillis: Long? = null,
