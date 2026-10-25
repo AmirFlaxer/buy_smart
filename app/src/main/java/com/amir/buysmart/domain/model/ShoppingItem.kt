@@ -29,7 +29,6 @@ data class ShoppingItem(
 ) {
     val isDeleted: Boolean get() = deletedAtMillis != null
 
-
     /**
      * מפתח קטגוריה אחיד — לקיבוץ ולחיפוש. מבחין בין מובנה ומותאם.
      */
