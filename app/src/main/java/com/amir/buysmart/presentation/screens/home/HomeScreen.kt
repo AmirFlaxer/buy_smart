@@ -71,9 +71,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
+    // מארח נפרד לדיאלוגים במסך מלא: הם חלון נפרד מעל ה-Scaffold, ולכן ה-Snackbar של המסך לא נראה מתחתם
+    val dialogSnackbarHostState = remember { SnackbarHostState() }
     if (state.showRecentlyDeleted) {
         RecentlyDeletedScreen(
             groups = state.deletedGroups,
+            snackbarHostState = dialogSnackbarHostState,
             onRestore = viewModel::restoreDeleted,
             onClose = viewModel::closeRecentlyDeleted
         )
@@ -104,7 +107,9 @@ fun HomeScreen(
 
     LaunchedEffect(state.errorMessage) {
         val message = state.errorMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Short)
+        // בזמן שדיאלוג מסך-מלא פתוח ההודעה מוצגת בו, ולא במסך שמאחוריו (פעם אחת בלבד)
+        val host = if (state.showRecentlyDeleted) dialogSnackbarHostState else snackbarHostState
+        host.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.clearError()
     }
 
