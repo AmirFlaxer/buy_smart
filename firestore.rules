@@ -35,12 +35,55 @@ service cloud.firestore {
                     && resource.data.members.removeAll(request.resource.data.members)
                          .hasOnly([request.auth.uid]);
 
-      allow delete: if isMember(resource.data);
+      // מחיקת רשימה שלמה אסורה מהלקוח (הגנת מידע, גרסה 1.4).
+      allow delete: if false;
 
+      // פריטים: מחיקה רכה (deletedAt) במקום מחיקה פיזית. מחיקה פיזית רק של פריט
+      // שנמחק רכות לפני יותר מ-30 יום (ניקוי).
       match /items/{itemId} {
-        allow read, write: if isMember(
+        allow read, create: if isMember(
           get(/databases/$(database)/documents/lists/$(listId)).data
         );
+
+        // עדכון: חבר. במעבר מ"לא מחוק" ל"מחוק" חובה לתעד מי ומתי (חותמת-שרת).
+        // שחזור (הסרת deletedAt) וכל עדכון אחר נשארים מותרים.
+        allow update: if isMember(
+            get(/databases/$(database)/documents/lists/$(listId)).data
+          )
+          && (
+            resource.data.get('deletedAt', null) != null
+            || request.resource.data.get('deletedAt', null) == null
+            || (request.resource.data.deletedBy == request.auth.uid
+                && request.resource.data.deletedAt == request.time)
+          );
+
+        allow delete: if isMember(
+            get(/databases/$(database)/documents/lists/$(listId)).data
+          )
+          && resource.data.get('deletedAt', null) is timestamp
+          && resource.data.deletedAt < request.time - duration.value(30, 'd');
+      }
+
+      // גיבויים (פעמיים בשבוע). נוצרים ונקראים ע"י חברים, אין עדכון.
+      // מחיקה רק של גיבוי ותיק מ-35 יום.
+      match /backups/{backupId} {
+        allow read, create: if isMember(
+          get(/databases/$(database)/documents/lists/$(listId)).data
+        );
+        allow delete: if isMember(
+            get(/databases/$(database)/documents/lists/$(listId)).data
+          )
+          && resource.data.createdAt < request.time - duration.value(35, 'd');
+
+        match /items/{itemId} {
+          allow read, create: if isMember(
+            get(/databases/$(database)/documents/lists/$(listId)).data
+          );
+          allow delete: if isMember(
+              get(/databases/$(database)/documents/lists/$(listId)).data
+            )
+            && resource.data.createdAt < request.time - duration.value(35, 'd');
+        }
       }
 
       // בקשות הצטרפות: המבקש יוצר/מבטל את שלו; חבר רואה ומאשר (מחיקה) או דוחה.
