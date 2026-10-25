@@ -14,7 +14,9 @@ import com.amir.buysmart.domain.model.ShoppingLocation
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -181,24 +183,38 @@ class FirestoreService @Inject constructor(
         "deletedByName" to by.name
     )
 
-    /** מחזיר פריטים מחוקים לרשימה (ב-batch). markAutoRestored מסמן שהשחזור בוצע אוטומטית. */
+    /**
+     * מחזיר פריטים מחוקים לרשימה, ב-batches (commitInChunks). markAutoRestored מסמן שהשחזור
+     * בוצע אוטומטית. מסמך שנמחק פיזית בינתיים (ניקוי) מפיל batch ב-NOT_FOUND - אז בודקים
+     * בשרת אילו מסמכים קיימים, ומחזירים רק אותם (החזרה חוזרת אידמפוטנטית).
+     */
     suspend fun undeleteItems(listId: String, itemIds: List<String>, markAutoRestored: Boolean) {
         if (itemIds.isEmpty()) return
-        val batch = firestore.batch()
-        itemIds.forEach {
-            val fields = mutableMapOf<String, Any>(
-                "deletedAt" to FieldValue.delete(),
-                "deletedAtClient" to FieldValue.delete(),
-                "deleteReason" to FieldValue.delete(),
-                "deletedBy" to FieldValue.delete(),
-                "deletedByName" to FieldValue.delete(),
-                // כל החזרה - משתיקה את התראת "נוסף" אצל האחרים. autoRestoredAt נשאר רק לשחזור אוטומטי
-                "restoredAt" to FieldValue.serverTimestamp()
-            )
-            if (markAutoRestored) fields["autoRestoredAt"] = FieldValue.serverTimestamp()
-            batch.update(itemsCollection(listId).document(it), fields)
+        val fields = mutableMapOf<String, Any>(
+            "deletedAt" to FieldValue.delete(),
+            "deletedAtClient" to FieldValue.delete(),
+            "deleteReason" to FieldValue.delete(),
+            "deletedBy" to FieldValue.delete(),
+            "deletedByName" to FieldValue.delete(),
+            // כל החזרה - משתיקה את התראת "נוסף" אצל האחרים. autoRestoredAt נשאר רק לשחזור אוטומטי
+            "restoredAt" to FieldValue.serverTimestamp()
+        )
+        if (markAutoRestored) fields["autoRestoredAt"] = FieldValue.serverTimestamp()
+        suspend fun commit(ids: List<String>) = firestore.commitInChunks(
+            ops = ids,
+            sizeOf = { 200 },
+            apply = { batch, id -> batch.update(itemsCollection(listId).document(id), fields) }
+        )
+        try {
+            commit(itemIds)
+        } catch (e: FirebaseFirestoreException) {
+            if (e.code != FirebaseFirestoreException.Code.NOT_FOUND) throw e
+            val existing = itemIds.filter {
+                itemsCollection(listId).document(it).get(Source.SERVER).await().exists()
+            }
+            Log.w(TAG, "החזרה: ${itemIds.size - existing.size} פריטים כבר נמחקו פיזית, מדלג", e)
+            commit(existing)
         }
-        batch.commit().await()
     }
 
     /**
