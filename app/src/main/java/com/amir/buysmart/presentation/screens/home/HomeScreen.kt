@@ -82,6 +82,25 @@ fun HomeScreen(
         )
     }
     val context = LocalContext.current
+    if (state.showFullRefill) {
+        RefillFullScreen(
+            count = state.pendingRefillItems.size,
+            snackbarHostState = dialogSnackbarHostState,
+            onClose = viewModel::closeFullRefill
+        ) {
+            PendingRefillSection(
+                items = state.pendingRefillItems,
+                onApprove = viewModel::approvePendingRefill,
+                onDelete = viewModel::deleteItem,
+                onReplaceImage = { item, uri -> viewModel.replaceItemImage(context, item, uri) },
+                onDeleteImage = viewModel::removeItemImage
+            )
+        }
+    }
+    // כשהפריט האחרון אושר או נמחק מתוך המסך המלא - סוגרים אותו
+    LaunchedEffect(state.showFullRefill, state.pendingRefillItems.isEmpty()) {
+        if (state.showFullRefill && state.pendingRefillItems.isEmpty()) viewModel.closeFullRefill()
+    }
     val clipboard = LocalClipboardManager.current
     var backPressedOnce by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -108,7 +127,7 @@ fun HomeScreen(
     LaunchedEffect(state.errorMessage) {
         val message = state.errorMessage ?: return@LaunchedEffect
         // בזמן שדיאלוג מסך-מלא פתוח ההודעה מוצגת בו, ולא במסך שמאחוריו (פעם אחת בלבד)
-        val host = if (state.showRecentlyDeleted) dialogSnackbarHostState else snackbarHostState
+        val host = if (state.showRecentlyDeleted || state.showFullRefill) dialogSnackbarHostState else snackbarHostState
         host.showSnackbar(message = message, duration = SnackbarDuration.Short)
         viewModel.clearError()
     }
@@ -139,14 +158,6 @@ fun HomeScreen(
                 title = { AppBarTitle() },
                 actions = {
                     state.activeList?.let { list ->
-                        BadgedBox(
-                            badge = { if (state.totalItems > 0) Badge { Text(state.totalItems.toString()) } },
-                            modifier = Modifier.padding(end = 4.dp)
-                        ) {
-                            IconButton(onClick = { onGoShopping(list.id) }) {
-                                Icon(Icons.Default.ShoppingCart, "יוצא לקניות")
-                            }
-                        }
                         if (list.inviteCode.isNotEmpty()) {
                             IconButton(onClick = {
                                 val deepLink = "buysmart://join/${list.inviteCode}"
@@ -272,7 +283,16 @@ fun HomeScreen(
                         onPresetNoteToggle = viewModel::onQuickAddPresetNoteToggle,
                         onAdd = viewModel::quickAdd,
                         onAddCustomLocation = { showAddCustomLocationDialog = true },
-                        onDeleteCustomLocation = viewModel::removeCustomLocation
+                        onDeleteCustomLocation = viewModel::removeCustomLocation,
+                        goShoppingButton = {
+                            Button(
+                                onClick = { onGoShopping(state.activeList!!.id) },
+                                enabled = state.totalItems > 0,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("🛒 יוצאים לקניות · ${state.totalItems} פריטים")
+                            }
+                        }
                     )
                     HorizontalDivider()
 
@@ -314,15 +334,13 @@ fun HomeScreen(
                                 )
                             }
 
-                            // סקשן "לחידוש" — פריטים שנקנו ומחכים לאישור (בסוף, אחרי הרשימה לקנייה)
+                            // "לחידוש" כתגיות - פריטים שנקנו ומחכים לאישור (בסוף, אחרי הרשימה לקנייה)
                             if (state.pendingRefillItems.isNotEmpty()) {
                                 item {
-                                    PendingRefillSection(
+                                    RefillTags(
                                         items = state.pendingRefillItems,
                                         onApprove = viewModel::approvePendingRefill,
-                                        onDelete = viewModel::deleteItem,
-                                        onReplaceImage = { item, uri -> viewModel.replaceItemImage(context, item, uri) },
-                                        onDeleteImage = viewModel::removeItemImage
+                                        onShowAll = viewModel::openFullRefill
                                     )
                                 }
                             }
@@ -493,7 +511,7 @@ fun HomeScreen(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun PendingRefillSection(
+internal fun PendingRefillSection(
     items: List<ShoppingItem>,
     onApprove: (ShoppingItem) -> Unit,
     onDelete: (String) -> Unit,
@@ -814,7 +832,8 @@ private fun QuickAddBar(
     onPresetNoteToggle: (String) -> Unit,
     onAdd: () -> Unit,
     onAddCustomLocation: () -> Unit,
-    onDeleteCustomLocation: (String) -> Unit
+    onDeleteCustomLocation: (String) -> Unit,
+    goShoppingButton: @Composable () -> Unit
 ) {
     var dropdownExpanded by remember { mutableStateOf(false) }
     val selectedNoteParts = note.split(", ").map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -861,6 +880,9 @@ private fun QuickAddBar(
                 Text("הוסף")
             }
         }
+        Spacer(Modifier.height(6.dp))
+        // כפתור "יוצאים לקניות" - מתחת לשדה ההוספה ומעל צ'יפי הקטגוריות
+        goShoppingButton()
         Spacer(Modifier.height(6.dp))
         // קטגוריה — מובנות + מותאמות + "+"
         LocationChipRow(

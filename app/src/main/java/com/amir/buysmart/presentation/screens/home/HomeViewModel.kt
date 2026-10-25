@@ -75,6 +75,8 @@ data class HomeUiState(
     // פריטים שנמחקו לאחרונה לפי יום, למסך "נמחקו לאחרונה"
     val deletedGroups: List<Pair<LocalDate, List<ShoppingItem>>> = emptyList(),
     val showRecentlyDeleted: Boolean = false,
+    // מסך "לחידוש" המלא (כל הפריטים, לא רק התגיות)
+    val showFullRefill: Boolean = false,
     // הודעת שגיאה חד-פעמית להצגה ב-Snackbar
     val errorMessage: String? = null
 ) {
@@ -683,6 +685,10 @@ class HomeViewModel @Inject constructor(
     fun openRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = true) }
 
     fun closeRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = false) }
+
+    fun openFullRefill() = _uiState.update { it.copy(showFullRefill = true) }
+
+    fun closeFullRefill() = _uiState.update { it.copy(showFullRefill = false) }
 
     fun restoreDeleted(ids: List<String>) {
         val listId = _uiState.value.activeList?.id ?: return
