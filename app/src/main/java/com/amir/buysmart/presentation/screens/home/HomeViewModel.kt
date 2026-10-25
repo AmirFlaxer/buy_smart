@@ -2,6 +2,7 @@ package com.amir.buysmart.presentation.screens.home
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.amir.buysmart.data.remote.GeminiLocationClassifier
@@ -213,7 +214,10 @@ class HomeViewModel @Inject constructor(
     /** שומר הנתונים: אוסף את כל הפריטים (גם מחוקים) ומשחזר אוטומטית במחיקה גורפת או במחיקת שרת. */
     private fun observeGuard(listId: String) {
         guardJob = viewModelScope.launch {
-            dataProtectionRepository.observeAllItems(listId).collect { snapshot ->
+            dataProtectionRepository.observeAllItems(listId)
+                .conflate()
+                .catch { Log.w("HomeViewModel", "האזנת השומר נסגרה", it) }
+                .collect { snapshot ->
                 val message = listGuardian.onSnapshot(
                     listId, userId, snapshot, System.currentTimeMillis()
                 )

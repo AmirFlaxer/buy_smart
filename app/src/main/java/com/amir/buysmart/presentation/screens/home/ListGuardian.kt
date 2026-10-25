@@ -5,14 +5,17 @@ import com.amir.buysmart.data.repository.DataProtectionRepository
 import com.amir.buysmart.domain.model.ItemsSnapshot
 import com.amir.buysmart.domain.protection.ProtectionPolicy
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import java.time.LocalDate
 import javax.inject.Inject
 
 /**
  * שומר הרשימה: שחזור אוטומטי במחיקה גורפת (א') ובמחיקת פריטים מהשרת (ב').
- * שחזור אחד בכל פעם - תמונה שמגיעה בזמן שחזור מדולגת.
+ * הזיהוי מבוסס מצב, ולכן הקורא אוסף עם conflate ומעבד רק את התמונה האחרונה.
+ * ה-Mutex מגן רק מפני קריאות חופפות (למשל החלפת רשימה באמצע שחזור).
  */
 class ListGuardian @Inject constructor(
     private val repo: DataProtectionRepository
@@ -29,7 +32,7 @@ class ListGuardian @Inject constructor(
         if (!restoreLock.tryLock()) return null
         try {
             val cluster = ProtectionPolicy.massDeletionCluster(snapshot.items, nowMillis)
-            if (cluster.isNotEmpty()) {
+            if (cluster.isNotEmpty() && !snapshot.fromCache) {
                 repo.autoRestore(listId, cluster)
                 return "שוחזרו ${cluster.size} פריטים שנמחקו בבת אחת"
             }
@@ -44,7 +47,8 @@ class ListGuardian @Inject constructor(
                     if (repo.serverItemDocCount(listId) == 0 &&
                         repo.listExistsAndIsMember(listId, uid)
                     ) {
-                        repo.restoreFromBackup(listId, latest)
+                        // שחזור חלקי לא ניתן להשלמה - לא מבטלים אותו באמצע
+                        withContext(NonCancellable) { repo.restoreFromBackup(listId, latest) }
                         return "פריטי הרשימה נמחקו מהשרת ושוחזרו מגיבוי מיום ${displayDate(latest.id)}"
                     }
                 }
