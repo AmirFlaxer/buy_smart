@@ -93,6 +93,8 @@ class FirestoreService @Inject constructor(
                 deletedByName = getString("deletedByName") ?: "",
                 autoRestoredAtMillis = getTimestamp("autoRestoredAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
                     ?.toDate()?.time,
+                restoredAtMillis = getTimestamp("restoredAt", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?.toDate()?.time,
                 purchaseCount = getLong("purchaseCount")?.toInt() ?: 0
             )
         } catch (e: Exception) {
@@ -189,7 +191,9 @@ class FirestoreService @Inject constructor(
                 "deletedAtClient" to FieldValue.delete(),
                 "deleteReason" to FieldValue.delete(),
                 "deletedBy" to FieldValue.delete(),
-                "deletedByName" to FieldValue.delete()
+                "deletedByName" to FieldValue.delete(),
+                // כל החזרה - משתיקה את התראת "נוסף" אצל האחרים. autoRestoredAt נשאר רק לשחזור אוטומטי
+                "restoredAt" to FieldValue.serverTimestamp()
             )
             if (markAutoRestored) fields["autoRestoredAt"] = FieldValue.serverTimestamp()
             batch.update(itemsCollection(listId).document(it), fields)

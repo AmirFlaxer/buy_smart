@@ -85,11 +85,10 @@ object ProtectionPolicy {
         latestBackupItemCount: Int?
     ): Boolean = !fromCache && serverDocCount == 0 && (latestBackupItemCount ?: 0) > 0
 
-    // פריט ששוחזר אוטומטית לאחרונה - לא מציגים עליו התראת "נוסף" למשתמשים אחרים
-    fun isRecentlyRestored(item: ShoppingItem, nowMillis: Long): Boolean {
-        val restoredAt = item.autoRestoredAtMillis ?: return false
-        return nowMillis - restoredAt <= RESTORE_NOTIFY_SUPPRESS_MS
-    }
+    // פריט שהוחזר לאחרונה (ידנית או אוטומטית) - לא מציגים עליו התראת "נוסף" למשתמשים אחרים
+    fun isRecentlyRestored(item: ShoppingItem, nowMillis: Long): Boolean =
+        listOfNotNull(item.restoredAtMillis, item.autoRestoredAtMillis)
+            .any { nowMillis - it <= RESTORE_NOTIFY_SUPPRESS_MS }
 
     // פריטים שנמחקו ידנית או במיזוג ב-30 הימים האחרונים, מקובצים לפי יום מקומי (חדש ראשון)
     fun recentlyDeleted(

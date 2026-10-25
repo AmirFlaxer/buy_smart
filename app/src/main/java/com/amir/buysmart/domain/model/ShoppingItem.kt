@@ -23,6 +23,8 @@ data class ShoppingItem(
     val deleteReason: String = "",
     val deletedByName: String = "",
     val autoRestoredAtMillis: Long? = null,
+    // כל החזרה (ידנית או אוטומטית) - להשתקת התראת "נוסף" אצל המשתמשים האחרים
+    val restoredAtMillis: Long? = null,
     val purchaseCount: Int = 0
 ) {
     val isDeleted: Boolean get() = deletedAtMillis != null
