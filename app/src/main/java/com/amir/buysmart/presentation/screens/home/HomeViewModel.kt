@@ -726,9 +726,18 @@ class HomeViewModel @Inject constructor(
     fun restoreDeleted(ids: List<String>) {
         val listId = _uiState.value.activeList?.id ?: return
         if (ids.isEmpty()) return
+        // ריפוי קטגוריה יתומה (כמו ב-restorePendingItem): קטגוריה מותאמת של פריט מוחזר
+        // שנמחקה בינתיים חוזרת לרשימה, אחרת הפריט חוזר לקטגוריה שאי אפשר לבחור
+        val idSet = ids.toSet()
+        val customLocations = _uiState.value.deletedGroups
+            .flatMap { it.second }
+            .filter { it.id in idSet && it.customLocation.isNotBlank() }
+            .map { it.customLocation }
+            .distinct()
         viewModelScope.launch {
             try {
                 dataProtectionRepository.undelete(listId, ids)
+                customLocations.forEach { listRepository.addCustomLocation(listId, it) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "השחזור נכשל, נסה שוב") }
             }
