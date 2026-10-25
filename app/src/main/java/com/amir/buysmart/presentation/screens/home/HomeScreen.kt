@@ -291,7 +291,8 @@ fun HomeScreen(
                                 enabled = state.totalItems > 0,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("🛒 יוצאים לקניות · ${state.totalItems} פריטים")
+                                val count = if (state.totalItems == 1) "פריט אחד" else "${state.totalItems} פריטים"
+                                Text("🛒 יוצאים לקניות · $count")
                             }
                         }
                     )
