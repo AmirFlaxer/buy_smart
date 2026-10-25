@@ -74,4 +74,10 @@ object ProtectionPolicy {
         fromCache: Boolean,
         latestBackupItemCount: Int?
     ): Boolean = !fromCache && serverDocCount == 0 && (latestBackupItemCount ?: 0) > 0
+
+    // פריט ששוחזר אוטומטית לאחרונה - לא מציגים עליו התראת "נוסף" למשתמשים אחרים
+    fun isRecentlyRestored(item: ShoppingItem, nowMillis: Long): Boolean {
+        val restoredAt = item.autoRestoredAtMillis ?: return false
+        return nowMillis - restoredAt <= RESTORE_NOTIFY_SUPPRESS_MS
+    }
 }

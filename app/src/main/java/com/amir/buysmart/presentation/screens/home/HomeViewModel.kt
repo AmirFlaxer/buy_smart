@@ -15,6 +15,8 @@ import com.amir.buysmart.domain.model.LocationKey
 import com.amir.buysmart.domain.model.ShoppingItem
 import com.amir.buysmart.domain.model.ShoppingList
 import com.amir.buysmart.domain.model.ShoppingLocation
+import com.amir.buysmart.data.repository.DataProtectionRepository
+import com.amir.buysmart.domain.protection.ProtectionPolicy
 import com.amir.buysmart.domain.repository.ItemRepository
 import com.amir.buysmart.domain.repository.ListRepository
 import com.amir.buysmart.notification.ItemNotificationHelper
@@ -90,7 +92,9 @@ class HomeViewModel @Inject constructor(
     private val imageUploader: ImageUploader,
     private val auth: FirebaseAuth,
     private val geminiClassifier: GeminiLocationClassifier,
-    private val notificationHelper: ItemNotificationHelper
+    private val notificationHelper: ItemNotificationHelper,
+    private val dataProtectionRepository: DataProtectionRepository,
+    private val listGuardian: ListGuardian
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -101,6 +105,7 @@ class HomeViewModel @Inject constructor(
         ?: auth.currentUser?.email?.substringBefore("@") ?: ""
 
     private var itemsJob: Job? = null
+    private var guardJob: Job? = null
     private var requestsJob: Job? = null
     private var pendingJob: Job? = null
     private var memberListIds: Set<String> = emptySet()
@@ -177,7 +182,9 @@ class HomeViewModel @Inject constructor(
 
     private fun observeItems(listId: String) {
         itemsJob?.cancel()
+        guardJob?.cancel()
         knownItemIds = null
+        observeGuard(listId)
         itemsJob = viewModelScope.launch {
             itemRepository.getItemsForList(listId).collect { items ->
                 notifyNewItems(items)
@@ -203,12 +210,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** שומר הנתונים: אוסף את כל הפריטים (גם מחוקים) ומשחזר אוטומטית במחיקה גורפת או במחיקת שרת. */
+    private fun observeGuard(listId: String) {
+        guardJob = viewModelScope.launch {
+            dataProtectionRepository.observeAllItems(listId).collect { snapshot ->
+                val message = listGuardian.onSnapshot(
+                    listId, userId, snapshot, System.currentTimeMillis()
+                )
+                if (message != null) _uiState.update { it.copy(errorMessage = message) }
+            }
+        }
+    }
+
     /** מציג התראה מקומית על פריטים שנוספו ע"י משתמש אחר מאז הסנכרון הקודם. */
     private fun notifyNewItems(items: List<ShoppingItem>) {
         val currentIds = items.map { it.id }.toSet()
         val known = knownItemIds
         if (known != null) {
-            items.filter { it.id !in known && it.addedBy.isNotBlank() && it.addedBy != userId }
+            val now = System.currentTimeMillis()
+            items.filter {
+                it.id !in known && it.addedBy.isNotBlank() && it.addedBy != userId &&
+                    !ProtectionPolicy.isRecentlyRestored(it, now)
+            }
                 .forEach { item ->
                     notificationHelper.showItemAdded(
                         title = _uiState.value.activeList?.name ?: "רשימת קניות",
@@ -460,6 +483,7 @@ class HomeViewModel @Inject constructor(
             when (val result = listRepository.requestToJoin(trimmedCode, userId, displayName)) {
                 is JoinResult.AlreadyMember -> {
                     itemsJob?.cancel()
+                    guardJob?.cancel()
                     listRepository.setActiveList(userId, result.list.id)
                     _uiState.update { it.copy(activeList = result.list, errorMessage = "אתה כבר חבר ברשימה \"${result.list.name}\"") }
                     observeItems(result.list.id)
@@ -559,6 +583,7 @@ class HomeViewModel @Inject constructor(
         val list = _uiState.value.activeList ?: return
         viewModelScope.launch {
             itemsJob?.cancel()
+            guardJob?.cancel()
             requestsJob?.cancel()
             listRepository.leaveList(userId, list.id)
             autoCreateAttempted = false
