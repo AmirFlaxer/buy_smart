@@ -17,6 +17,7 @@ object ProtectionPolicy {
     const val BACKUP_PURGE_AGE_MS = 35 * 24 * 60 * 60 * 1000L
     const val SERVER_RECHECK_DELAY_MS = 5_000L
     const val RESTORE_NOTIFY_SUPPRESS_MS = 60 * 60 * 1000L
+    const val BACKUP_STALE_MS = 5 * 24 * 60 * 60 * 1000L
 
     private val BACKUP_ID_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
@@ -75,9 +76,18 @@ object ProtectionPolicy {
             .map { it.id }
     }
 
-    // המפתח הוא backupId, הערך הוא createdAtMillis
-    fun backupsToPurge(backups: Map<String, Long>, nowMillis: Long): List<String> =
-        backups.filter { nowMillis - it.value > BACKUP_PURGE_AGE_MS }.keys.toList()
+    // המפתח הוא backupId, הערך הוא createdAtMillis. הגיבוי החדש ביותר לא נמחק לעולם,
+    // גם אם הגיבויים הפסיקו להיווצר
+    fun backupsToPurge(backups: Map<String, Long>, nowMillis: Long): List<String> {
+        val newestId = backups.maxByOrNull { it.value }?.key
+        return backups
+            .filter { it.key != newestId && nowMillis - it.value > BACKUP_PURGE_AGE_MS }
+            .keys.toList()
+    }
+
+    // אין גיבוי, או שהאחרון ותיק מ-5 ימים (גיבוי פעמיים בשבוע: הפער הרגיל עד 4 ימים)
+    fun isBackupStale(latestCreatedAtMillis: Long?, nowMillis: Long): Boolean =
+        latestCreatedAtMillis == null || nowMillis - latestCreatedAtMillis > BACKUP_STALE_MS
 
     fun shouldRestoreFromBackup(
         serverDocCount: Int,

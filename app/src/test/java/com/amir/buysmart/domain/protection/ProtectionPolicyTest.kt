@@ -178,6 +178,44 @@ class ProtectionPolicyTest {
     }
 
     @Test
+    fun `backupsToPurge never returns the newest backup even if it is older than 35 days`() {
+        val backups = mapOf(
+            "2026-08-02" to now - 40 * day,
+            "2026-08-06" to now - 36 * day,
+            "2026-07-30" to now - 44 * day
+        )
+        assertEquals(
+            setOf("2026-08-02", "2026-07-30"),
+            ProtectionPolicy.backupsToPurge(backups, now).toSet()
+        )
+    }
+
+    @Test
+    fun `backupsToPurge keeps a single old backup`() {
+        assertTrue(ProtectionPolicy.backupsToPurge(mapOf("only" to now - 90 * day), now).isEmpty())
+    }
+
+    @Test
+    fun `no backup is stale`() {
+        assertTrue(ProtectionPolicy.isBackupStale(null, now))
+    }
+
+    @Test
+    fun `backup older than 5 days is stale`() {
+        assertTrue(ProtectionPolicy.isBackupStale(now - 5 * day - 1, now))
+    }
+
+    @Test
+    fun `backup exactly 5 days old is not stale`() {
+        assertFalse(ProtectionPolicy.isBackupStale(now - 5 * day, now))
+    }
+
+    @Test
+    fun `backup from 3 days ago is not stale`() {
+        assertFalse(ProtectionPolicy.isBackupStale(now - 3 * day, now))
+    }
+
+    @Test
     fun `shouldRestoreFromBackup`() {
         assertTrue(ProtectionPolicy.shouldRestoreFromBackup(0, false, 5))
         assertFalse(ProtectionPolicy.shouldRestoreFromBackup(0, true, 5))

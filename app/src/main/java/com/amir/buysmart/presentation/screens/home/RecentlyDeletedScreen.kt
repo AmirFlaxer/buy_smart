@@ -38,11 +38,15 @@ import java.time.format.DateTimeFormatter
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 private val DAY_FORMAT = DateTimeFormatter.ofPattern("dd/MM")
 
-/** מסך מלא (Dialog) של פריטים שנמחקו ב-30 הימים האחרונים, עם החזרה לפריט או ליום שלם. */
+/**
+ * מסך מלא (Dialog) של פריטים שנמחקו ב-30 הימים האחרונים, עם החזרה לפריט או ליום שלם.
+ * בראשו שורת מצב הגיבוי האחרון (null = עדיין נטען).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecentlyDeletedScreen(
     groups: List<Pair<LocalDate, List<ShoppingItem>>>,
+    backupLine: BackupLine?,
     snackbarHostState: SnackbarHostState,
     onRestore: (List<String>) -> Unit,
     onClose: () -> Unit
@@ -65,38 +69,50 @@ fun RecentlyDeletedScreen(
                 )
             }
         ) { padding ->
-            if (groups.isEmpty()) {
-                Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                backupLine?.let { line ->
                     Text(
-                        "אין פריטים שנמחקו ב-30 הימים האחרונים",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        line.text,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (line.isWarning) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
-            } else {
-                val zone = ZoneId.systemDefault()
-                val today = LocalDate.now(zone)
-                LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-                    groups.forEach { (date, dayItems) ->
-                        item(key = "header-$date") {
-                            Row(
-                                Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    dayLabel(date, today),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                TextButton(onClick = { onRestore(dayItems.map { it.id }) }) {
-                                    Text("החזר הכל")
+                if (groups.isEmpty()) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "אין פריטים שנמחקו ב-30 הימים האחרונים",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    val zone = ZoneId.systemDefault()
+                    val today = LocalDate.now(zone)
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                        groups.forEach { (date, dayItems) ->
+                            item(key = "header-$date") {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        dayLabel(date, today),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    TextButton(onClick = { onRestore(dayItems.map { it.id }) }) {
+                                        Text("החזר הכל")
+                                    }
                                 }
                             }
-                        }
-                        items(dayItems, key = { it.id }) { item ->
-                            DeletedItemRow(item, zone, onRestore = { onRestore(listOf(item.id)) })
-                            HorizontalDivider()
+                            items(dayItems, key = { it.id }) { item ->
+                                DeletedItemRow(item, zone, onRestore = { onRestore(listOf(item.id)) })
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }

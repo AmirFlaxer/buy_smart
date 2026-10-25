@@ -26,17 +26,23 @@ import com.amir.buysmart.domain.util.QuantityUtils
 import com.amir.buysmart.domain.usecase.AddItemUseCase
 import com.amir.buysmart.domain.usecase.DeleteItemUseCase
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 /** "הוסף שוב" על פריט מ"לחידוש" שכבר נמצא ברשימה לקנייה (אותו שם, אותה קטגוריה). */
 data class RefillConflict(val refillItem: ShoppingItem, val activeItem: ShoppingItem)
+
+/** שורת מצב הגיבוי בראש "נמחקו לאחרונה". isWarning: אין גיבוי או שהאחרון ותיק מ-5 ימים. */
+data class BackupLine(val text: String, val isWarning: Boolean)
 
 data class HomeUiState(
     val activeList: ShoppingList? = null,
@@ -75,6 +81,8 @@ data class HomeUiState(
     // פריטים שנמחקו לאחרונה לפי יום, למסך "נמחקו לאחרונה"
     val deletedGroups: List<Pair<LocalDate, List<ShoppingItem>>> = emptyList(),
     val showRecentlyDeleted: Boolean = false,
+    // null = עדיין נטען
+    val backupLine: BackupLine? = null,
     // מסך "לחידוש" המלא (כל הפריטים, לא רק התגיות)
     val showFullRefill: Boolean = false,
     // הודעת שגיאה חד-פעמית להצגה ב-Snackbar
@@ -682,7 +690,32 @@ class HomeViewModel @Inject constructor(
     // התמונה מאוחסנת בתוך מסמך הפריט (base64), ולכן נמחקת יחד איתו — אין צורך בניקוי נפרד.
     fun clearRecentlyDeleted() = _uiState.update { it.copy(recentlyDeleted = null) }
 
-    fun openRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = true) }
+    fun openRecentlyDeleted() {
+        _uiState.update { it.copy(showRecentlyDeleted = true, backupLine = null) }
+        val listId = _uiState.value.activeList?.id ?: return
+        viewModelScope.launch {
+            // כשל קריאה (למשל לפני פריסת החוקים) מוצג כמו "אין גיבוי" - לא מסתירים בעיה
+            val latest = try {
+                dataProtectionRepository.latestBackup(listId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("HomeViewModel", "קריאת הגיבוי האחרון נכשלה", e)
+                null
+            }
+            val line = if (latest == null) {
+                BackupLine("עדיין אין גיבוי", isWarning = true)
+            } else {
+                val date = Instant.ofEpochMilli(latest.createdAtMillis).atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("dd/MM"))
+                BackupLine(
+                    "גיבוי אחרון: $date",
+                    isWarning = ProtectionPolicy.isBackupStale(latest.createdAtMillis, System.currentTimeMillis())
+                )
+            }
+            _uiState.update { it.copy(backupLine = line) }
+        }
+    }
 
     fun closeRecentlyDeleted() = _uiState.update { it.copy(showRecentlyDeleted = false) }
 

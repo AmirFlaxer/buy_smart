@@ -76,6 +76,7 @@ fun HomeScreen(
     if (state.showRecentlyDeleted) {
         RecentlyDeletedScreen(
             groups = state.deletedGroups,
+            backupLine = state.backupLine,
             snackbarHostState = dialogSnackbarHostState,
             onRestore = viewModel::restoreDeleted,
             onClose = viewModel::closeRecentlyDeleted
